@@ -24,9 +24,10 @@ enum EcoLogits {
     static let batch = 64.0, gpuMemoryGB = 80.0, serverGPUs = 8.0, serverPowerKW = 1.2, quantBits = 16.0
 
     // tracers/utils.py PROVIDER_CONFIG_MAP: data-center PUE and on-site WUE (L/kWh), plus the off-site
-    // WUE (L/kWh) of the data-center country from electricity_mixes.json (USA 3.1321). Claude only for now.
+    // WUE (L/kWh) of the data-center country from electricity_mixes.json (USA 3.1321).
     static let providers: [String: (pue: ClosedRange<Double>, wue: ClosedRange<Double>, offsite: Double)] = [
         "anthropic": (1.09...1.14, 0.13...0.999, 3.1321),
+        "openai": (1.2...1.2, 0.569...0.569, 3.1321),
     ]
 
     static func water(_ m: Model, outputTokens: Int) -> Liters {
@@ -95,6 +96,17 @@ struct Usage {
     let water: Liters
 }
 
+/// Complete lines appended to `path` since the last call; a half-written last line waits for next time.
+func newLines(_ path: String, offsets: inout [String: UInt64]) -> [Data] {
+    guard let h = FileHandle(forReadingAtPath: path) else { return [] }
+    defer { try? h.close() }
+    let start = offsets[path] ?? 0
+    try? h.seek(toOffset: start)
+    guard let data = try? h.readToEnd(), let nl = data.lastIndex(of: 0x0A) else { return [] }
+    offsets[path] = start + UInt64(nl - data.startIndex + 1)
+    return data[...nl].split(separator: 0x0A).map { Data($0) }
+}
+
 /// Reads Claude Code transcripts (~/.claude/projects/*/*.jsonl, written by the CLI and the
 /// desktop app's Code tab). Incremental: remembers how far into each file it has read.
 final class ClaudeCodeReader {
@@ -112,15 +124,10 @@ final class ClaudeCodeReader {
             let pdir = (dir as NSString).appendingPathComponent(project)
             for file in (try? fm.contentsOfDirectory(atPath: pdir)) ?? [] where file.hasSuffix(".jsonl") {
                 let path = (pdir as NSString).appendingPathComponent(file)
-                guard let mtime = (try? fm.attributesOfItem(atPath: path))?[.modificationDate] as? Date,
-                      mtime > cutoff, let h = FileHandle(forReadingAtPath: path) else { continue }
-                defer { try? h.close() }
-                let start = offsets[path] ?? 0
-                try? h.seek(toOffset: start)
-                guard let data = try? h.readToEnd(), let nl = data.lastIndex(of: 0x0A) else { continue }
-                offsets[path] = start + UInt64(nl - data.startIndex + 1)   // leave a half-written last line for next time
-                for line in data[...nl].split(separator: 0x0A) {
-                    if let u = parse(Data(line), cutoff: cutoff, catalog: catalog) { out.append(u) }
+                guard let mtime = (try? fm.attributesOfItem(atPath: path))?[.modificationDate] as? Date, mtime > cutoff
+                else { continue }
+                for line in newLines(path, offsets: &offsets) {
+                    if let u = parse(line, cutoff: cutoff, catalog: catalog) { out.append(u) }
                 }
             }
         }

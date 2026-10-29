@@ -3,6 +3,9 @@ import Combine
 import ServiceManagement
 import SwiftUI
 
+// Chrome starts the native messaging host with the extension's origin as an argument.
+if CommandLine.arguments.contains(where: { $0.hasPrefix("chrome-extension://") }) { runNativeHost() }
+
 let catalog = Catalog(url: Bundle.main.url(forResource: "models", withExtension: "json")
     ?? URL(fileURLWithPath: "Resources/models.json"))
 
@@ -13,7 +16,7 @@ final class Store: ObservableObject {
     @Published var hours: Double = UserDefaults.standard.object(forKey: "hours") as? Double ?? 5 {
         didSet { UserDefaults.standard.set(hours, forKey: "hours") }
     }
-    private let reader = ClaudeCodeReader()
+    private let reader = ClaudeCodeReader(), browser = BrowserReader()
     private var kept: [Usage] = []   // owned by `queue` (or the caller in --dump/--preview)
     private let queue = DispatchQueue(label: "tracky.read", qos: .utility)
 
@@ -25,7 +28,7 @@ final class Store: ObservableObject {
     /// Reads new log lines; keeps a day so any period can be shown.
     func load() -> [Usage] {
         let cutoff = Date().addingTimeInterval(-24 * 3600)
-        kept = kept.filter { $0.date > cutoff } + reader.read(since: cutoff, catalog: catalog)
+        kept = kept.filter { $0.date > cutoff } + reader.read(since: cutoff, catalog: catalog) + browser.read(since: cutoff, catalog: catalog)
         return kept
     }
 
@@ -54,7 +57,8 @@ func fmt(_ l: Double) -> String {
     l >= 1 ? String(format: "%.2f L", l) : l * 1000 >= 10 ? String(format: "%.0f mL", l * 1000) : String(format: "%.1f mL", l * 1000)
 }
 func pretty(_ name: String) -> String {
-    name.replacingOccurrences(of: "claude-", with: "")
+    if name.first?.isUppercase == true { return name }   // already a display name, e.g. "Google AI Overview"
+    return name.replacingOccurrences(of: "claude-", with: "")
         .replacingOccurrences(of: #"-\d{8}$"#, with: "", options: .regularExpression)
         .replacingOccurrences(of: #"(\d)-(\d)"#, with: "$1.$2", options: .regularExpression)
         .replacingOccurrences(of: "-", with: " ").capitalized
@@ -77,7 +81,7 @@ func container(for l: Double) -> (name: String, sprite: [String], fill: Double, 
 
 func tips(_ s: Store) -> [String] {
     var out: [String] = []
-    if let top = s.byModel.first, let haiku = catalog["claude-haiku-5-5"], top.model.name != haiku.name {
+    if let top = s.byModel.first, top.model.provider == "anthropic", let haiku = catalog["claude-haiku-5-5"], top.model.name != haiku.name {
         let ratio = EcoLogits.water(top.model, outputTokens: 1000).mid / EcoLogits.water(haiku, outputTokens: 1000).mid
         if ratio >= 2 { out.append("Try Haiku: ~\(Int(ratio))× less water") }
     }
@@ -305,7 +309,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.removeAllItems()
         menu.addItem(row("Water · last \(Int(store.hours))h", "≈ " + fmt(store.total.mid), bold: true))
         for m in store.byModel.prefix(3) { menu.addItem(row(pretty(m.model.name), fmt(m.water.mid))) }
-        if store.byModel.isEmpty { menu.addItem(row("No Claude activity yet", "")) }
+        if store.byModel.isEmpty { menu.addItem(row("No AI activity yet", "")) }
         menu.addItem(.separator())
         menu.addItem(row("💡 " + tips(store)[0], ""))
         menu.addItem(.separator())
@@ -372,7 +376,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 // MARK: - Entry
 
 let args = CommandLine.arguments
-if args.contains("--selftest") { selfTest(catalog: catalog); exit(0) }
+if args.contains("--selftest") { selfTest(catalog: catalog); browserSelfTest(catalog: catalog); exit(0) }
 if args.contains("--dump") {   // what Tracky sees in the last 24 h
     for (name, us) in Dictionary(grouping: Store().load(), by: { $0.model.name }) {
         let w = us.reduce(Liters()) { $0 + $1.water }

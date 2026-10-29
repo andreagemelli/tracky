@@ -1,6 +1,6 @@
 # Tracky
 
-A small pixel water drop that lives on your Mac and shows how much water your Claude use costs, while you use it.
+A small pixel water drop that lives on your Mac and shows how much water your AI use costs, while you use it.
 
 ![Tracky at each heat level, awake in light mode and asleep in dark mode](docs/preview.png)
 
@@ -19,7 +19,7 @@ A small pixel water drop that lives on your Mac and shows how much water your Cl
 - **Tips in a speech bubble:** every 24 seconds Tracky says one, such as *Try Haiku: ~42× less water* or *Try lower effort: 45% is thinking*.
 - **Menu bar:** the drop and the total. Click it for the water per model, a tip, the period (last 1, 5 or 24 hours), switches to hide the card and to open Tracky at login (on by default), and *How is this estimated?*, which opens the EcoLogits method Tracky implements.
 
-Everything stays on your Mac. Tracky reads only which model ran, when, and how many tokens it produced. It never reads prompts or replies, needs no permissions and makes no network calls.
+Everything stays on your Mac. Tracky records only which model ran, when, and how many tokens it produced. It never stores prompts or replies, needs no macOS permissions and makes no network calls.
 
 ## Run it
 
@@ -47,9 +47,30 @@ build/Tracky.app/Contents/MacOS/Tracky --preview docs/preview.png
 
 ## What it tracks
 
-Claude Code, in the terminal and in the Claude desktop app's Code tab. It reads `~/.claude/projects/*/*.jsonl`, and for each reply takes the model, output and thinking tokens, and effort.
+**Claude Code**, in the terminal and in the Claude desktop app's Code tab. It reads `~/.claude/projects/*/*.jsonl`, and for each reply takes the model, output and thinking tokens, and effort. These counts are exact.
 
-Not tracked yet: Claude's chat (web and desktop), other AI tools, browser AI such as Google's AI Overviews, and local models.
+**The browser (Chrome),** through the extension in `extension/`. When an AI reply finishes, it sends Tracky the site, the model and an approximate token count, never the text.
+
+| Site | Model | Water |
+|---|---|---|
+| claude.ai | read from the model picker (Sonnet 5.5 if not found) | EcoLogits |
+| chatgpt.com | read from the reply (GPT-5 if not found) | EcoLogits |
+| gemini.google.com | not read | Google's measured 0.26 mL per prompt |
+| Google search, AI Overviews and AI Mode | not read | Google's measured 0.26 mL per prompt |
+
+Browser counts are estimates: tokens are guessed from reply length (about 4 characters per token), and a reply counts only once Tracky has seen it stream in. Replies already on the page, such as an old chat you open, are never counted.
+
+To set it up:
+
+```bash
+./install-browser.sh
+```
+
+Then, in Chrome, open `chrome://extensions`, turn on **Developer mode**, click **Load unpacked**, and pick the `extension` folder. The script registers Tracky as Chrome's [native messaging](https://developer.chrome.com/docs/extensions/develop/concepts/native-messaging) host; `./install-browser.sh --uninstall` removes it. Each event is stored as one line in `~/Library/Application Support/Tracky/browser.jsonl`.
+
+The extension finds replies through each site's page structure, which can change without notice. If a site stops counting, open its DevTools console: every counted reply logs a `[tracky]` line.
+
+Not tracked yet: the Claude desktop app's chat, Cowork, other browsers, and local models.
 
 ## How the water is estimated
 
@@ -60,7 +81,7 @@ Tracky is a Swift port of the [EcoLogits](https://ecologits.ai) LLM inference me
    `water = IT energy × (WUE on-site + PUE × WUE off-site)`
 3. **Model sizes** come from EcoLogits' `models.json`, bundled unchanged in `Resources/`. Anthropic doesn't publish Claude's sizes, so EcoLogits estimates a range. Tracky computes the min–max range and shows its midpoint, marked `≈`.
 
-For scale, Google measured [0.26 mL of water per median Gemini text prompt](https://services.google.com/fh/files/misc/measuring_the_environmental_impact_of_delivering_ai_at_google_scale.pdf). By EcoLogits, 1,000 output tokens from Opus 5.5 cost about 10–24 mL, and from Haiku 5.5 about 0.2–0.6 mL.
+For Gemini and Google's AI Overviews, Tracky uses Google's own measurement instead of an estimate: [0.26 mL of water per median Gemini text prompt](https://services.google.com/fh/files/misc/measuring_the_environmental_impact_of_delivering_ai_at_google_scale.pdf). For scale, by EcoLogits, 1,000 output tokens from Opus 5.5 cost about 10–24 mL, and from Haiku 5.5 about 0.2–0.6 mL.
 
 ### Known limits
 
