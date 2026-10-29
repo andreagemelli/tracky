@@ -28,6 +28,10 @@ enum EcoLogits {
     static let providers: [String: (pue: ClosedRange<Double>, wue: ClosedRange<Double>, offsite: Double)] = [
         "anthropic": (1.09...1.14, 0.13...0.999, 3.1321),
         "openai": (1.2...1.2, 0.569...0.569, 3.1321),
+        "mistralai": (1.16...1.16, 0.09...0.09, 6.0315),   // SWE
+        // Not in EcoLogits: an unknown provider gets the widest PUE and WUE range above, with the
+        // world-average off-site WUE (WOR 3.908).
+        "other": (1.09...1.2, 0.09...0.999, 3.908),
     ]
 
     static func water(_ m: Model, outputTokens: Int) -> Liters {

@@ -1,8 +1,8 @@
 # Tracky
 
-A small pixel water drop that lives on your Mac and shows how much water your AI use costs, while you use it.
+A small pixel water drop that lives on your Mac and shows how much water your AI use costs, while you use it: coding agents, AI chats in the browser, and Google's AI answers.
 
-![Tracky at each heat level, awake in light mode and asleep in dark mode, with sample browser usage in the legend](docs/preview.png)
+![Tracky at each heat level, awake in light mode and asleep in dark mode, with sample usage in the legend](docs/preview.png)
 
 - **On the desktop:** a card you can drag anywhere. Tracky sleeps when no AI is working and paces and hops while one is. Double-click the card (or use the menu) to switch between the complete card and a minimal one with just Tracky and the total.
 - **It heats up as you use more water.** A bar fills toward the next container, and each container you pass makes Tracky hotter:
@@ -16,13 +16,27 @@ A small pixel water drop that lives on your Mac and shows how much water your AI
   | shower | 60 ([average US shower, 15.8 gal](https://home-water-works.org/indoor-use/showers)) | steaming |
   | bathtub | 150 | overheated, red |
 
-- **Where the water comes from:** a second bar splits the total by model and source, such as *Opus 5.5 · Code* or *Sonnet 5.5 · claude.ai*, with a legend. The four largest get a color; the rest are grouped as *Other*.
-- **Tips in a speech bubble,** about what you used last: the next lighter model in the same family (*Try Sonnet 5.5: ~3× less water* after Opus, *Try Haiku 5.5* after Sonnet), your Claude Code effort (*45% thinking: try lower effort*), or, after a Google search with an AI answer, *Skip AI Overviews: add &udm=14*.
+- **Where the water comes from:** a second bar splits the total by model and source, such as *Opus 5.5 · Code*, *GPT 5.2 · ChatGPT* or *Google AI Overview*, with a legend. The four largest get a color; the rest are grouped as *Other*.
+- **Tips in a speech bubble,** about what you used last: the next lighter model in the same family (*Try Sonnet 5.5: ~3× less water* after Opus), your coding agent's effort (*45% thinking: try lower effort*), or, after a Google search with an AI answer, *Use Google's Web tab: no AI answer*.
 - **Menu bar:** the drop and the total. Click it for the same breakdown, a tip, the period (last 1, 5 or 24 hours), switches for the minimal card, to hide the card and to open Tracky at login (on by default), and *How is this estimated?*, which opens the EcoLogits method Tracky implements.
 
 Everything stays on your Mac. Tracky records only which model ran, when, and how many tokens it produced. It never stores prompts or replies, needs no macOS permissions and makes no network calls.
 
-## Run it
+## What works, and what's been tested
+
+Tracky may work with tools outside this list, but only what's marked *tested* has been checked against real use.
+
+| Source | How Tracky sees it | Status |
+|---|---|---|
+| Claude Code (terminal, and the Claude desktop app's Code tab) | its local logs: exact model and token counts | tested |
+| claude.ai in Chrome | extension, model from the page | tested |
+| chatgpt.com in Chrome | extension, model from the page when shown (GPT-5 otherwise) | tested |
+| Google AI Overviews and AI Mode in Chrome | extension, one prompt per AI answer, follow-ups included | tested (English and Italian Google) |
+| gemini.google.com in Chrome | extension | built, not confirmed |
+| Other AI chat sites in Chrome: Qwen, DeepSeek, Le Chat, Perplexity, Grok, Kimi, Copilot, Z.ai, HuggingChat, Poe | extension's general meter | built, checked only on a simulated chat |
+| Claude desktop app's chat, Cowork, desktop chat apps, Firefox, Safari, local models | — | not yet |
+
+## Install
 
 Needs macOS 14+ and the Swift toolchain (Xcode Command Line Tools are enough).
 
@@ -34,7 +48,7 @@ Needs macOS 14+ and the Swift toolchain (Xcode Command Line Tools are enough).
 open build/Tracky.app
 ```
 
-`build.sh` also runs the self-test. Two more flags help with checking:
+`build.sh` also runs the self-tests. Two more flags help with checking:
 
 ```bash
 build/Tracky.app/Contents/MacOS/Tracky --dump
@@ -46,32 +60,24 @@ build/Tracky.app/Contents/MacOS/Tracky --preview docs/preview.png
 
 `--dump` prints what Tracky read from the last 24 hours. `--preview` renders every heat level, awake and asleep, to a PNG, adding a few sample browser events so the legend fills up.
 
-## What it tracks
-
-**Claude Code**, in the terminal and in the Claude desktop app's Code tab. It reads `~/.claude/projects/*/*.jsonl`, and for each reply takes the model, output and thinking tokens, and effort. These counts are exact.
-
-**The browser (Chrome),** through the extension in `extension/`. When an AI reply finishes, it sends Tracky the site, the model and an approximate token count, never the text.
-
-| Site | Model | Water |
-|---|---|---|
-| claude.ai | read from the model picker (Sonnet 5.5 if not found) | EcoLogits |
-| chatgpt.com | read from the reply (GPT-5 if not found) | EcoLogits |
-| gemini.google.com | not read | Google's measured 0.26 mL per prompt |
-| Google search: each AI Overview and AI Mode answer, follow-ups included | not read | Google's measured 0.26 mL per prompt |
-
-Browser counts are estimates: tokens are guessed from reply length (about 4 characters per token), and a reply counts only once Tracky has seen it stream in. Replies already on the page, such as an old chat you open, are never counted.
-
-To set it up:
+### Browser extension (Chrome)
 
 ```bash
 ./install-browser.sh
 ```
 
-Then, in Chrome, open `chrome://extensions`, turn on **Developer mode**, click **Load unpacked**, and pick the `extension` folder. The script registers Tracky as Chrome's [native messaging](https://developer.chrome.com/docs/extensions/develop/concepts/native-messaging) host; `./install-browser.sh --uninstall` removes it. Each event is stored as one line in `~/Library/Application Support/Tracky/browser.jsonl`.
+Then, in Chrome, open `chrome://extensions`, turn on **Developer mode**, click **Load unpacked**, and pick the `extension` folder. The script registers Tracky as Chrome's [native messaging](https://developer.chrome.com/docs/extensions/develop/concepts/native-messaging) host; `./install-browser.sh --uninstall` removes it.
 
-The extension finds replies through each site's page structure, which can change without notice. If a site stops counting, open its DevTools console: every counted reply logs a `[tracky]` line.
+## How it sees your AI use
 
-Not tracked yet: the Claude desktop app's chat, Cowork, other browsers, and local models.
+**Coding agents.** Tracky reads Claude Code's own logs (`~/.claude/projects/*/*.jsonl`): for each reply, the model, output and thinking tokens, and effort. These counts are exact.
+
+**The browser.** When an AI reply finishes, the extension sends Tracky the site, the model and an approximate token count, never the text. Tracky stores each event as one line in `~/Library/Application Support/Tracky/browser.jsonl`. There are two ways it notices replies:
+
+- **Dedicated watchers** for claude.ai, ChatGPT, Gemini and Google search. They read each site's page structure, which also gives the model name. Sites can change that structure without notice.
+- **A general meter** for the other listed sites. It notices that the page is streaming a reply (a request whose answer arrives in pieces), then measures how much visible text the page gained. It never reads what is sent or streamed, only the model name when the request carries one. Adding a site is one line in `extension/manifest.json`.
+
+Browser token counts are estimates (about 4 characters per token). A reply counts only once Tracky has seen it stream in, so an old chat you open is never counted. If a site stops counting, open its DevTools console: every counted reply logs a `[tracky]` line.
 
 ## How the water is estimated
 
@@ -80,9 +86,14 @@ Tracky is a Swift port of the [EcoLogits](https://ecologits.ai) LLM inference me
 1. **Energy per request** comes from the number of output tokens and the model's active parameters, fitted on the [ML.ENERGY leaderboard](https://ml.energy/leaderboard) (GPU), plus the server's share during generation, scaled by the data center's PUE.
 2. **Water** follows [Li et al. 2025, *Making AI Less "Thirsty"*](https://arxiv.org/abs/2304.03271): on-site cooling water (the data center's WUE) plus off-site water used to generate its electricity ([WRI method](https://www.wri.org/research/guidance-calculating-water-use-embedded-purchased-electricity)).
    `water = IT energy × (WUE on-site + PUE × WUE off-site)`
-3. **Model sizes** come from EcoLogits' `models.json`, bundled unchanged in `Resources/`. Anthropic doesn't publish Claude's sizes, so EcoLogits estimates a range. Tracky computes the min–max range and shows its midpoint, marked `≈`.
+3. **Model sizes** come from EcoLogits' `models.json`, bundled unchanged in `Resources/`. Closed models (Claude, GPT) don't publish their sizes, so EcoLogits estimates a range. Tracky computes the min–max range and shows its midpoint, marked `≈`.
 
-For Gemini and Google's AI Overviews, Tracky uses Google's own measurement instead of an estimate: [0.26 mL of water per median Gemini text prompt](https://services.google.com/fh/files/misc/measuring_the_environmental_impact_of_delivering_ai_at_google_scale.pdf). For scale, by EcoLogits, 1,000 output tokens from Opus 5.5 cost about 10–24 mL, and from Haiku 5.5 about 0.2–0.6 mL.
+Two cases go beyond EcoLogits:
+
+- **Google** (Gemini and AI Overviews): Tracky uses Google's own measurement, [0.26 mL of water per median Gemini text prompt](https://services.google.com/fh/files/misc/measuring_the_environmental_impact_of_delivering_ai_at_google_scale.pdf).
+- **Models EcoLogits doesn't know** (Qwen, DeepSeek, Kimi, Grok and others): the same formula with an assumed size range of 200–1,000B total and 20–100B active parameters, the widest data-center figures EcoLogits uses, and world-average electricity water. Treat these numbers as an order of magnitude.
+
+For scale, by EcoLogits, 1,000 output tokens from Opus 5.5 cost about 10–24 mL, and from Haiku 5.5 about 0.2–0.6 mL.
 
 ### Known limits
 

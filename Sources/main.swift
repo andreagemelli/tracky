@@ -116,7 +116,7 @@ func tips(_ s: Store) -> [String] {
     var out: [String] = []
     if let last = s.usages.max(by: { $0.date < $1.date }) {
         if last.source == "Search" {
-            out += ["Skip AI Overviews: add &udm=14", "AI Mode follow-ups cost water"]
+            out += ["Use Google's Web tab: no AI answer", "AI Mode follow-ups cost water"]
         }
         if let alt = lighter(than: last.model) {
             let ratio = EcoLogits.water(last.model, outputTokens: 1000).mid / EcoLogits.water(alt, outputTokens: 1000).mid
@@ -489,7 +489,6 @@ if let i = args.firstIndex(of: "--preview"), i + 1 < args.count {   // render ev
         ForEach([ColorScheme.light, .dark], id: \.self) { scheme in
             HStack(alignment: .top, spacing: 16) {   // light: awake at each heat level; dark: asleep
                 ForEach(0..<containers.count, id: \.self) { Companion(store: store, forced: (scheme == .dark, $0)) }
-                Companion(store: store, forced: (scheme == .dark, 3), forcedCompact: true)
             }
             .padding(16).background(scheme == .dark ? Color(white: 0.05) : Color(white: 0.86)).environment(\.colorScheme, scheme)
         }

@@ -92,3 +92,9 @@ function watchSearch() {
 
 if (location.hostname === "www.google.com") watchSearch();
 else if (SITES[location.hostname]) watchReplies(location.hostname, SITES[location.hostname]);
+else {
+  // Any other listed AI site: meter.js (in the page) measures replies; pass its events on.
+  window.addEventListener("message", (e) => {
+    if (e.source === window && e.data?.tracky) report(e.data.tracky);
+  });
+}
