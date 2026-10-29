@@ -669,14 +669,10 @@ if let i = args.firstIndex(of: "--shots"), i + 1 < args.count {   // render the 
     }
     try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
     shot("hero") { card(.water, 1); card(.energy, 3); card(.co2, 5) }
-    shot("heat") { ForEach(0..<6, id: \.self) { card(.water, $0, compact: true) } }
     shot("minimal", dark: true) { card(.water, 0, asleep: true, compact: true); card(.energy, 2, compact: true); card(.co2, 4, compact: true) }
     store.roasting = true
     shot("roast") { card(.water, 2) }
     store.roasting = false
-    store.showSetup = true
-    (store.browserOn, store.chromeConnected) = (false, false)   // show the two setup steps
-    shot("browser", dark: true) { card(.water, 0) }
     exit(0)
 }
 

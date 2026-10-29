@@ -39,18 +39,13 @@ The dot turns green once the extension checks in. It then counts AI replies on c
 
 ## What you can do
 
-![Browser tracking setup on the card](docs/browser.png)
-
 - **Pick a metric.** The button under the 🔥 flame switches water → energy → CO₂, and so does *Track* in the menu. Tracky becomes a drop, a spark or a little fire; the other two metrics show under the total.
 - **Watch it heat up.** A bar fills toward the next everyday amount, such as a cup, a phone charge or 1 km by car. Each one you pass makes Tracky hotter, until it's red.
-
-  ![Tracky from cool to overheated](docs/heat.png)
-
 - **See where it comes from.** The legend splits the total by model and source, such as *Opus 5.5 · Code* or *GPT 5.2 · ChatGPT*, in at most five lines.
 - **Get tips** in a speech bubble, about what you used last: a lighter model, lower effort, or skipping Google's AI answers.
 - **🔥 Roast me.** Tracky gets angry and lists what the same amount could have been: espressos, phone charges, meters by car… Close it with ✕.
 
-  ![The roast](docs/roast.png)
+  <img src="docs/roast.png" alt="The roast" width="240">
 
 - **Go minimal.** Double-click the card for just Tracky, the total and the model that used the most.
 
@@ -107,7 +102,7 @@ Tracky stores only which model ran, when, and how many tokens it produced; never
 build/Tracky.app/Contents/MacOS/Tracky --selftest
 ```
 
-`--selftest` runs the checks (also run by `build.sh`), `--dump` prints what Tracky read in the last 24 hours, and `--shots docs` renders these screenshots.
+`--selftest` runs the checks (also run by `build.sh`), `--dump` prints what Tracky read in the last 24 hours, and `--shots docs` renders the README screenshots.
 
 ## Credits
 
