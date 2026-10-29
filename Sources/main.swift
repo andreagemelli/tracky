@@ -43,6 +43,13 @@ final class Store: ObservableObject {
     var total: Liters { recent.reduce(Liters()) { $0 + $1.water } }
     var active: Bool { usages.contains { $0.date > Date().addingTimeInterval(-90) } }
 
+    /// Water per model and source (Google's surfaces by name), heaviest first.
+    var bySource: [(label: String, water: Liters)] {
+        Dictionary(grouping: recent) { $0.model.provider == "google" ? $0.model.name : "\(pretty($0.model.name)) · \($0.source)" }
+            .map { ($0.key, $0.value.reduce(Liters()) { $0 + $1.water }) }
+            .sorted { $0.water.mid > $1.water.mid }
+    }
+
     /// Per model, heaviest first.
     var byModel: [(model: Model, water: Liters)] {
         Dictionary(grouping: recent) { $0.model.name }.values
@@ -62,6 +69,7 @@ func pretty(_ name: String) -> String {
         .replacingOccurrences(of: #"-\d{8}$"#, with: "", options: .regularExpression)
         .replacingOccurrences(of: #"(\d)-(\d)"#, with: "$1.$2", options: .regularExpression)
         .replacingOccurrences(of: "-", with: " ").capitalized
+        .replacingOccurrences(of: "Gpt", with: "GPT")
 }
 
 /// Everyday amounts of water, smallest first. Passing one makes Tracky a level hotter.
@@ -77,6 +85,18 @@ let containers: [(name: String, liters: Double, sprite: [String])] = [
 func container(for l: Double) -> (name: String, sprite: [String], fill: Double, level: Int) {
     let i = containers.firstIndex { l < $0.liters } ?? containers.count - 1
     return (containers[i].name, containers[i].sprite, min(l / containers[i].liters, 1), i)
+}
+
+let sliceColors = [Color(red: 0.33, green: 0.62, blue: 0.96), Color(red: 0.2, green: 0.74, blue: 0.62),
+                   Color(red: 0.98, green: 0.6, blue: 0.24), Color(red: 0.64, green: 0.5, blue: 0.93)]
+
+/// The four heaviest contributions, the rest as "Other", each with its color in the bar and legend.
+func slices(_ s: Store) -> [(label: String, liters: Double, color: Color)] {
+    let all = s.bySource
+    var out = all.prefix(sliceColors.count).enumerated().map { ($1.label, $1.water.mid, sliceColors[$0]) }
+    let rest = all.dropFirst(sliceColors.count).reduce(0) { $0 + $1.water.mid }
+    if rest > 0 { out.append(("Other", rest, .gray)) }
+    return out.filter { $0.1 > 0 }
 }
 
 func tips(_ s: Store) -> [String] {
@@ -247,6 +267,31 @@ struct Companion: View {
                     .frame(width: CGFloat(c.1.map(\.count).max() ?? 0) * 2, height: CGFloat(c.1.count) * 2)
                 Text("\(Int(c.2 * 100))% of a \(c.0)").font(.system(size: 12)).foregroundStyle(.secondary)
             }
+            let parts = slices(store), sum = parts.reduce(0) { $0 + $1.liters }
+            if sum > 0 {
+                Divider()
+                GeometryReader { g in   // the whole bar is the total; each slice is one model and source
+                    HStack(spacing: 2) {
+                        ForEach(parts.indices, id: \.self) { i in
+                            Rectangle().fill(parts[i].color)
+                                .frame(width: max((g.size.width - CGFloat(parts.count - 1) * 2) * parts[i].liters / sum, 2))
+                        }
+                    }
+                    .clipShape(Capsule())
+                }
+                .frame(height: 8)
+                VStack(alignment: .leading, spacing: 4) {
+                    ForEach(parts.indices, id: \.self) { i in
+                        HStack(spacing: 6) {
+                            RoundedRectangle(cornerRadius: 2).fill(parts[i].color).frame(width: 8, height: 8)
+                            Text(parts[i].label).lineLimit(1)
+                            Spacer()
+                            Text(fmt(parts[i].liters)).monospacedDigit().foregroundStyle(.secondary)
+                        }
+                        .font(.system(size: 11))
+                    }
+                }
+            }
         }
         .padding(16)
         .frame(width: 250)
@@ -302,14 +347,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         store.objectWillChange.receive(on: RunLoop.main).sink { [weak self] in
             guard let self else { return }
             statusItem.button?.title = " " + fmt(store.total.mid)
+            // The legend grows and shrinks the card; keep its top edge where the user left it.
+            if let host = panel.contentView, host.fittingSize.height != panel.frame.height {
+                var f = panel.frame
+                f.origin.y += f.height - host.fittingSize.height
+                f.size = host.fittingSize
+                panel.setFrame(f, display: true)
+            }
         }.store(in: &bag)
     }
 
     func menuNeedsUpdate(_ menu: NSMenu) {
         menu.removeAllItems()
         menu.addItem(row("Water · last \(Int(store.hours))h", "≈ " + fmt(store.total.mid), bold: true))
-        for m in store.byModel.prefix(3) { menu.addItem(row(pretty(m.model.name), fmt(m.water.mid))) }
-        if store.byModel.isEmpty { menu.addItem(row("No AI activity yet", "")) }
+        for m in store.bySource.prefix(5) { menu.addItem(row(m.label, fmt(m.water.mid))) }
+        if store.bySource.isEmpty { menu.addItem(row("No AI activity yet", "")) }
         menu.addItem(.separator())
         menu.addItem(row("💡 " + tips(store)[0], ""))
         menu.addItem(.separator())
@@ -386,7 +438,10 @@ if args.contains("--dump") {   // what Tracky sees in the last 24 h
 }
 if let i = args.firstIndex(of: "--preview"), i + 1 < args.count {   // render every heat level, awake (light) and asleep (dark), to a PNG
     let store = Store()
-    store.usages = store.load()
+    // Real usage plus a few sample browser events, so the legend shows every kind of source.
+    let samples = [#"{"site":"claude.ai","model":"claude-sonnet-5-5","tokens":4000}"#, #"{"site":"chatgpt.com","model":"gpt-5-2","tokens":3000}"#]
+        + Array(repeating: #"{"site":"google-ai-overview"}"#, count: 40)
+    store.usages = store.load() + samples.compactMap { BrowserEvent(json: Data($0.utf8))?.usage(at: Date(), catalog: catalog) }
     let sheet = VStack(spacing: 16) {
         ForEach([ColorScheme.light, .dark], id: \.self) { scheme in
             HStack(alignment: .top, spacing: 16) {   // light: awake at each heat level; dark: asleep

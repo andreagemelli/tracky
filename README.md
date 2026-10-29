@@ -2,7 +2,7 @@
 
 A small pixel water drop that lives on your Mac and shows how much water your AI use costs, while you use it.
 
-![Tracky at each heat level, awake in light mode and asleep in dark mode](docs/preview.png)
+![Tracky at each heat level, awake in light mode and asleep in dark mode, with sample browser usage in the legend](docs/preview.png)
 
 - **On the desktop:** a card you can drag anywhere. Tracky sleeps when Claude is idle and paces and hops while it works.
 - **It heats up as you use more water.** A bar fills toward the next container, and each container you pass makes Tracky hotter:
@@ -16,8 +16,9 @@ A small pixel water drop that lives on your Mac and shows how much water your AI
   | shower | 60 ([average US shower, 15.8 gal](https://home-water-works.org/indoor-use/showers)) | steaming |
   | bathtub | 150 | overheated, red |
 
+- **Where the water comes from:** a second bar splits the total by model and source, such as *Opus 5.5 · Code* or *Sonnet 5.5 · claude.ai*, with a legend. The four largest get a color; the rest are grouped as *Other*.
 - **Tips in a speech bubble:** every 24 seconds Tracky says one, such as *Try Haiku: ~42× less water* or *Try lower effort: 45% is thinking*.
-- **Menu bar:** the drop and the total. Click it for the water per model, a tip, the period (last 1, 5 or 24 hours), switches to hide the card and to open Tracky at login (on by default), and *How is this estimated?*, which opens the EcoLogits method Tracky implements.
+- **Menu bar:** the drop and the total. Click it for the same breakdown, a tip, the period (last 1, 5 or 24 hours), switches to hide the card and to open Tracky at login (on by default), and *How is this estimated?*, which opens the EcoLogits method Tracky implements.
 
 Everything stays on your Mac. Tracky records only which model ran, when, and how many tokens it produced. It never stores prompts or replies, needs no macOS permissions and makes no network calls.
 
@@ -43,7 +44,7 @@ build/Tracky.app/Contents/MacOS/Tracky --dump
 build/Tracky.app/Contents/MacOS/Tracky --preview docs/preview.png
 ```
 
-`--dump` prints what Tracky read from the last 24 hours. `--preview` renders every heat level, awake and asleep, to a PNG.
+`--dump` prints what Tracky read from the last 24 hours. `--preview` renders every heat level, awake and asleep, to a PNG, adding a few sample browser events so the legend fills up.
 
 ## What it tracks
 

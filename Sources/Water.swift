@@ -90,6 +90,7 @@ struct Catalog {
 /// One model request seen in a local log. Holds no prompt or reply text.
 struct Usage {
     let date: Date
+    let source: String   // where it ran: "Code", "claude.ai", "ChatGPT", "Gemini", "Search"
     let model: Model
     let output, thinking: Int
     let effort: String?
@@ -146,7 +147,7 @@ final class ClaudeCodeReader {
         else { return nil }
         seen.insert(id)
         let thinking = (usage["output_tokens_details"] as? [String: Any])?["thinking_tokens"] as? Int ?? 0
-        return Usage(date: date, model: model, output: output, thinking: thinking,
+        return Usage(date: date, source: "Code", model: model, output: output, thinking: thinking,
                      effort: d["perTurnEffort"] as? String, water: EcoLogits.water(model, outputTokens: output))
     }
 }

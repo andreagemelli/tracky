@@ -28,6 +28,7 @@ struct BrowserEvent: Equatable {
 
     /// The model behind the event and its water. Unknown models fall back to the site's usual default.
     func usage(at date: Date, catalog: Catalog) -> Usage? {
+        let source = ["claude.ai": "claude.ai", "chatgpt.com": "ChatGPT", "gemini.google.com": "Gemini"][site] ?? "Search"
         switch site {
         case "claude.ai", "chatgpt.com":
             let fallback = site == "claude.ai" ? "claude-sonnet-5-5" : "gpt-5"
@@ -37,11 +38,11 @@ struct BrowserEvent: Equatable {
                 return [m, dotted, dotted.replacingOccurrences(of: #"-(thinking|instant|pro)$"#, with: "", options: .regularExpression)]
             } ?? []
             guard let m = (candidates + [fallback]).lazy.compactMap({ catalog[$0] }).first else { return nil }
-            return Usage(date: date, model: m, output: tokens, thinking: 0, effort: nil, water: EcoLogits.water(m, outputTokens: tokens))
+            return Usage(date: date, source: source, model: m, output: tokens, thinking: 0, effort: nil, water: EcoLogits.water(m, outputTokens: tokens))
         default:
             let name = site == "gemini.google.com" ? "Gemini" : "Google AI Overview"
             let m = Model(name: name, provider: "google", total: 0...0, active: 0...0, tps: nil, ttft: nil)
-            return Usage(date: date, model: m, output: tokens, thinking: 0, effort: nil,
+            return Usage(date: date, source: source, model: m, output: tokens, thinking: 0, effort: nil,
                          water: Liters(min: googleLitersPerPrompt, max: googleLitersPerPrompt))
         }
     }
