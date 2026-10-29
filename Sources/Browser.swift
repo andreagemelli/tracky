@@ -42,10 +42,10 @@ enum ChromeLink {
     }
 }
 
-/// Google's measured water for a median Gemini Apps text prompt (Elsworth et al. 2025,
-/// "Measuring the environmental impact of delivering AI at Google scale"), used for every
-/// Gemini reply and AI Overview instead of an EcoLogits estimate.
-let googleLitersPerPrompt = 0.00026
+/// Google's measurement for a median Gemini Apps text prompt (Elsworth et al. 2025, "Measuring the
+/// environmental impact of delivering AI at Google scale"): 0.24 Wh, 0.03 g CO₂e and 0.26 mL of water.
+/// Used for every Gemini reply and AI Overview instead of an EcoLogits estimate.
+let googlePerPrompt = Impact(energy: .exactly(0.00024), co2: .exactly(0.00003), water: .exactly(0.00026))
 
 struct BrowserEvent: Equatable {
     static let sites: Set = ["claude.ai", "chatgpt.com", "gemini.google.com", "google-ai-overview"]
@@ -72,7 +72,7 @@ struct BrowserEvent: Equatable {
             return [m, dotted, dotted.replacingOccurrences(of: #"-(thinking|instant|pro)$"#, with: "", options: .regularExpression)]
         } ?? []
         func estimate(_ m: Model, _ source: String) -> Usage {
-            Usage(date: date, source: source, model: m, output: tokens, thinking: 0, effort: nil, water: EcoLogits.water(m, outputTokens: tokens))
+            Usage(date: date, source: source, model: m, output: tokens, thinking: 0, effort: nil, impact: EcoLogits.impact(m, outputTokens: tokens))
         }
         switch site {
         case "claude.ai", "chatgpt.com":   // unknown models fall back to the site's usual default
@@ -83,7 +83,7 @@ struct BrowserEvent: Equatable {
             let m = Model(name: site == "gemini.google.com" ? "Gemini" : "Google AI Overview", provider: "google",
                           total: 0...0, active: 0...0, tps: nil, ttft: nil)
             return Usage(date: date, source: site == "gemini.google.com" ? "Gemini" : "Search", model: m, output: tokens,
-                         thinking: 0, effort: nil, water: Liters(min: googleLitersPerPrompt, max: googleLitersPerPrompt))
+                         thinking: 0, effort: nil, impact: googlePerPrompt)
         default:   // any other AI chat site: EcoLogits if it knows the model, else a wide stand-in
             let source = site.replacingOccurrences(of: #"^(chat|www)\."#, with: "", options: .regularExpression)
             if let m = candidates.lazy.compactMap({ catalog[$0] }).first, EcoLogits.providers[m.provider] != nil {
@@ -148,13 +148,13 @@ func browserSelfTest(catalog: Catalog) {
     precondition(event(#"{"site":"claude.ai","model":"x\"; rm","tokens":9999999}"#).map { $0.model == nil && $0.tokens == 100_000 } == true,
                  "bad model and huge token count must be cleaned")
     let opus = event(#"{"site":"claude.ai","model":"claude-opus-5-5","tokens":1000}"#)!.usage(at: Date(), catalog: catalog)!
-    precondition(abs(opus.water.min - 0.010032736340167416) < 1e-12, "claude.ai must use EcoLogits")
+    precondition(abs(opus.impact.water.min - 0.010032736340167416) < 1e-12, "claude.ai must use EcoLogits")
     let gpt = event(#"{"site":"chatgpt.com","model":"gpt-5-2-thinking","tokens":1000}"#)!.usage(at: Date(), catalog: catalog)!
     precondition(gpt.model.name == "gpt-5.2", "ChatGPT slug must map to EcoLogits, got \(gpt.model.name)")
-    precondition(event(#"{"site":"google-ai-overview"}"#)!.usage(at: Date(), catalog: catalog)!.water.min == googleLitersPerPrompt)
+    precondition(event(#"{"site":"google-ai-overview"}"#)!.usage(at: Date(), catalog: catalog)!.impact.water.min == 0.00026)
     let mistral = event(#"{"site":"chat.mistral.ai","model":"mistral-medium-3.5","tokens":1000}"#)!.usage(at: Date(), catalog: catalog)!
-    precondition(abs(mistral.water.min - 0.0034188770292818793) < 1e-12 && mistral.source == "mistral.ai", "known models on other sites use EcoLogits")
+    precondition(abs(mistral.impact.water.min - 0.0034188770292818793) < 1e-12 && mistral.source == "mistral.ai", "known models on other sites use EcoLogits")
     let qwen = event(#"{"site":"chat.qwen.ai","model":"qwen3.7-plus","tokens":1000}"#)!.usage(at: Date(), catalog: catalog)!
-    precondition(qwen.model.provider == "other" && qwen.water.min > 0 && qwen.water.max > qwen.water.min, "unknown models get a range")
+    precondition(qwen.model.provider == "other" && qwen.impact.water.min > 0 && qwen.impact.water.max > qwen.impact.water.min, "unknown models get a range")
     print("browser selftest ok")
 }

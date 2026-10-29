@@ -17,6 +17,9 @@ final class Store: ObservableObject {
     @Published var chromeConnected = ChromeLink.connected
     @Published var showSetup = false
     @Published var roasting = false
+    @Published var metric = Metric(rawValue: UserDefaults.standard.string(forKey: "metric") ?? "") ?? .water {
+        didSet { UserDefaults.standard.set(metric.rawValue, forKey: "metric") }
+    }
     func refreshLink() { browserOn = ChromeLink.on; chromeConnected = ChromeLink.connected }
     @Published var compact = UserDefaults.standard.bool(forKey: "compact") {
         didSet { UserDefaults.standard.set(compact, forKey: "compact") }
@@ -50,31 +53,20 @@ final class Store: ObservableObject {
     }
 
     var recent: [Usage] { usages.filter { $0.date > Date().addingTimeInterval(-hours * 3600) } }
-    var total: Liters { recent.reduce(Liters()) { $0 + $1.water } }
+    var impact: Impact { recent.reduce(Impact()) { $0 + $1.impact } }
+    var total: Amount { metric.of(impact) }
     var active: Bool { usages.contains { $0.date > Date().addingTimeInterval(-90) } }
 
-    /// Water per model and source (Google's surfaces by name), heaviest first.
-    var bySource: [(label: String, water: Liters)] {
+    /// One metric per model and source (Google's surfaces by name), heaviest first.
+    func bySource(_ m: Metric) -> [(label: String, value: Amount)] {
         Dictionary(grouping: recent) { $0.model.provider == "google" ? $0.model.name : "\(pretty($0.model.name)) · \($0.source)" }
-            .map { ($0.key, $0.value.reduce(Liters()) { $0 + $1.water }) }
-            .sorted { $0.water.mid > $1.water.mid }
-    }
-
-    /// Per model, heaviest first.
-    var byModel: [(model: Model, water: Liters)] {
-        Dictionary(grouping: recent) { $0.model.name }.values
-            .map { ($0[0].model, $0.reduce(Liters()) { $0 + $1.water }) }
-            .sorted { $0.water.mid > $1.water.mid }
+            .map { ($0.key, m.of($0.value.reduce(Impact()) { $0 + $1.impact })) }
+            .sorted { $0.value.mid > $1.value.mid }
     }
 }
 
 // MARK: - Wording
 
-func fmt(_ l: Double) -> String {
-    let ml = l * 1000
-    return l >= 1 ? String(format: "%.2f L", l) : ml >= 10 ? String(format: "%.0f mL", ml)
-        : ml >= 1 ? String(format: "%.1f mL", ml) : ml >= 0.005 ? String(format: "%.2f mL", ml) : ml > 0 ? "<0.01 mL" : "0 mL"
-}
 func pretty(_ name: String) -> String {
     if name.first?.isUppercase == true { return name }   // already a display name, e.g. "Google AI Overview"
     return name.replacingOccurrences(of: "claude-", with: "")
@@ -84,32 +76,17 @@ func pretty(_ name: String) -> String {
         .replacingOccurrences(of: "Gpt", with: "GPT")
 }
 
-/// Everyday amounts of water, smallest first. Passing one makes Tracky a level hotter.
-let containers: [(name: String, liters: Double, sprite: [String])] = [
-    ("cup", 0.25, Sprites.cup),
-    ("bottle", 1.5, Sprites.bottle),
-    ("toilet flush", 6, Sprites.toilet),   // US federal limit, 1.6 gal per flush (EPA WaterSense)
-    ("bucket", 10, Sprites.bucket),
-    ("shower", 60, Sprites.shower),        // average US shower, 15.8 gal (home-water-works.org)
-    ("bathtub", 150, Sprites.tub),
-]
-/// The first container not yet full, how full it is, and its index (Tracky's heat level).
-func container(for l: Double) -> (name: String, sprite: [String], fill: Double, level: Int) {
-    let i = containers.firstIndex { l < $0.liters } ?? containers.count - 1
-    return (containers[i].name, containers[i].sprite, min(l / containers[i].liters, 1), i)
-}
-
 let sliceColors = [Color(red: 0.33, green: 0.62, blue: 0.96), Color(red: 0.2, green: 0.74, blue: 0.62),
                    Color(red: 0.98, green: 0.6, blue: 0.24), Color(red: 0.64, green: 0.5, blue: 0.93),
                    Color(red: 0.94, green: 0.45, blue: 0.62)]
 
 /// At most five lines for the bar, the legend and the menu: all of them if they fit, else the four
 /// heaviest and "Other" summing the rest.
-func slices(_ s: Store) -> [(label: String, liters: Double, color: Color)] {
-    let all = s.bySource.filter { $0.water.mid > 0 }
+func slices(_ s: Store, _ m: Metric) -> [(label: String, amount: Double, color: Color)] {
+    let all = s.bySource(m).filter { $0.value.mid > 0 }
     let named = all.count <= 5 ? all[...] : all.prefix(4)
-    var out = named.enumerated().map { ($1.label, $1.water.mid, sliceColors[$0]) }
-    if all.count > 5 { out.append(("Other", all.dropFirst(4).reduce(0) { $0 + $1.water.mid }, .gray)) }
+    var out = named.enumerated().map { ($1.label, $1.value.mid, sliceColors[$0]) }
+    if all.count > 5 { out.append(("Other", all.dropFirst(4).reduce(0) { $0 + $1.value.mid }, .gray)) }
     return out
 }
 
@@ -127,11 +104,12 @@ func tips(_ s: Store) -> [String] {
     var out: [String] = []
     if let last = s.usages.max(by: { $0.date < $1.date }) {
         if last.source == "Search" {
-            out += ["Try Google's Web tab: no AI", "AI Mode follow-ups cost water"]
+            out += ["Try Google's Web tab: no AI", "AI Mode follow-ups cost \(s.metric.noun)"]
         }
         if let alt = lighter(than: last.model) {
-            let ratio = EcoLogits.water(last.model, outputTokens: 1000).mid / EcoLogits.water(alt, outputTokens: 1000).mid
-            if ratio >= 1.5 { out.append("Try \(pretty(alt.name)): ~\(Int(ratio.rounded()))× less water") }
+            let one = { (m: Model) in s.metric.of(EcoLogits.impact(m, outputTokens: 1000)).mid }
+            let ratio = one(last.model) / one(alt)
+            if ratio >= 1.5 { out.append("Try \(pretty(alt.name)): ~\(Int(ratio.rounded()))× less \(s.metric.noun)") }
         }
         if let effort = last.effort, ["max", "xhigh", "high"].contains(effort) {
             let code = s.recent.filter { $0.source == "Code" }
@@ -140,7 +118,7 @@ func tips(_ s: Store) -> [String] {
                                                                : "Effort \(effort): try lower")
         }
     }
-    out.append("Shorter answers, less water")
+    out.append("Shorter answers, less \(s.metric.noun)")
     return out
 }
 
@@ -149,9 +127,6 @@ func tipsSelfTest() {
     precondition(step("claude-opus-5-5") == "claude-sonnet-5-5" && step("claude-sonnet-4-5-20250929") == "claude-haiku-5-5")
     precondition(step("claude-haiku-5-5") == nil, "Haiku is the lightest Claude")
     precondition(step("gpt-5.2") == "gpt-5-mini" && step("gpt-5-mini") == "gpt-5-nano")
-    precondition(roastLine(roastItems[1], 4.41) == "17 cups of tea" && roastLine(roastItems[3], 6) == "1 toilet flush")
-    precondition(roastLine(roastItems[3], 9) == "1.5 toilet flushes" && roastLine(roastItems[4], 4.41) == "20% of a tomato, grown")
-    precondition(fmt(0.000017) == "0.02 mL" && fmt(0.0000001) == "<0.01 mL" && fmt(0.0042) == "4.2 mL" && fmt(4.41) == "4.41 L")
     print("tips selftest ok")
 }
 
@@ -159,15 +134,15 @@ func tipsSelfTest() {
 
 enum Sprites {
     // # body, % shade, e eye, b blush, m mouth, . container inside, space transparent
-    static let awake = [
-        "     ##     ", "    ####    ", "   ######   ", "  ########  ", " ########## ", " ##e####e## ",
-        "###e####e###", "##b######b##", "#####mm#####", " %%%%%%%%%% ", "  %%%%%%%%  ",
-    ]
-    static let angry = awake.enumerated().map { i, r in   // thick brows, red cheeks, a frown
-        i == 4 ? " #ee####ee# " : i == 7 ? "#bb######bb#" : i == 8 ? "####mmmm####" : r
+    /// Tracky: the metric's own top (drop, spark or fire) over a shared face and body.
+    static func awake(_ m: Metric) -> [String] {
+        m.top + ["  ########  ", " ########## ", " ##e####e## ", "###e####e###", "##b######b##", "#####mm#####", " %%%%%%%%%% ", "  %%%%%%%%  "]
     }
-    static let asleep = awake.enumerated().map { i, r in
-        i == 5 ? " ########## " : i == 6 ? "##ee####ee##" : r
+    static func angry(_ m: Metric) -> [String] {   // thick brows, red cheeks, a frown
+        awake(m).enumerated().map { i, r in i == 4 ? " #ee####ee# " : i == 7 ? "#bb######bb#" : i == 8 ? "####mmmm####" : r }
+    }
+    static func asleep(_ m: Metric) -> [String] {
+        awake(m).enumerated().map { i, r in i == 5 ? " ########## " : i == 6 ? "##ee####ee##" : r }
     }
     static let cup = ["#....#  ", "#....###", "#....# #", "#....###", " ####   "]
     static let bottle = ["  ##  ", " #..# ", "#....#", "#....#", "#....#", " #### "]
@@ -179,15 +154,16 @@ enum Sprites {
 
 struct Palette {
     let scheme: ColorScheme
-    var warmth = 0.0   // 0 = cool blue, 1 = fully overheated
+    var warmth = 0.0   // 0 = the metric's own color, 1 = fully overheated
+    var metric = Metric.water
     var card: Color { scheme == .dark ? Color(white: 0.15) : .white }
     var track: Color { scheme == .dark ? Color(white: 0.27) : Color(white: 0.91) }
     var ground: Color { scheme == .dark ? Color(white: 0.35) : Color(white: 0.82) }
     var ink: Color { scheme == .dark ? Color(white: 0.92) : Color(white: 0.15) }
     var bubble: Color { scheme == .dark ? Color(white: 0.24) : Color(white: 0.97) }
     var outline: Color { scheme == .dark ? Color(white: 0.6) : Color(white: 0.45) }
-    var water: Color { mix((0.33, 0.62, 0.96), (0.96, 0.47, 0.36)) }
-    var shade: Color { mix((0.2, 0.45, 0.82), (0.8, 0.3, 0.25)) }
+    var body: Color { mix(metric.tint, (0.96, 0.47, 0.36)) }
+    var shade: Color { mix(metric.shadeTint, (0.8, 0.3, 0.25)) }
     let eye = Color(red: 0.1, green: 0.12, blue: 0.18)
     var blush: Color { Color(red: 1, green: 0.5, blue: 0.55).opacity(0.6 + 0.4 * warmth) }
 
@@ -206,7 +182,7 @@ func draw(_ rows: [String], in ctx: GraphicsContext, at o: CGPoint, px: CGFloat,
             case "%": p.shade
             case "e", "m": p.eye
             case "b": p.blush
-            case ".": wet.contains(y) ? p.water : nil
+            case ".": wet.contains(y) ? p.body : nil
             default: nil
             }
             if let c { ctx.fill(Path(CGRect(x: o.x + CGFloat(x) * px, y: o.y + CGFloat(y) * px, width: px, height: px)), with: .color(c)) }
@@ -220,6 +196,7 @@ func draw(_ rows: [String], in ctx: GraphicsContext, at o: CGPoint, px: CGFloat,
 /// Heat (0–5, one per container passed) layers on top: blush, sweat, flushed cheeks and panting, steam, then a red body.
 struct Scene: View {
     let asleep: Bool, heat: Int, tick: Int, tip: String?
+    var metric = Metric.water
     var angry = false   // roasting: red, shaking and steaming whatever the heat
     var height: CGFloat = 100
     var rightMargin: CGFloat = 0   // room left free for the card's corner icons
@@ -230,7 +207,8 @@ struct Scene: View {
     }
 
     private func render(_ ctx: GraphicsContext, _ size: CGSize) {
-        let p = Palette(scheme: scheme, warmth: heat >= 5 || angry ? 0.75 : 0)   // blue until overheated: a blue–red blend reads as purple
+        // Its own color until overheated: a blend toward red reads as muddy halfway.
+        let p = Palette(scheme: scheme, warmth: heat >= 5 || angry ? 0.75 : 0, metric: metric)
         let px: CGFloat = 4, groundY = size.height - 4, w = 12 * px, h = 11 * px
         ctx.fill(Path(CGRect(x: 0, y: groundY, width: size.width, height: 1)), with: .color(p.ground))
 
@@ -243,12 +221,18 @@ struct Scene: View {
             ctx.fill(Path(CGRect(x: x + dx, y: y + dy, width: s, height: t)), with: .color(c))
         }
 
-        var rows = angry ? Sprites.angry : asleep ? Sprites.asleep : Sprites.awake
+        var rows = angry ? Sprites.angry(metric) : asleep ? Sprites.asleep(metric) : Sprites.awake(metric)
         if heat == 0 { rows = rows.map { $0.replacingOccurrences(of: "b", with: "#") } }   // cool: no blush yet
         if heat >= 3 { rows[7] = "#bb######bb#" }                                            // hot: flushed cheeks
-        draw(rows, in: ctx, at: CGPoint(x: x, y: y), px: px, ink: p.water, p)
+        draw(rows, in: ctx, at: CGPoint(x: x, y: y), px: px, ink: p.body, p)
         if heat >= 3 && tick % 2 == 0 { dot(5 * px, 9 * px, p.eye, 2 * px, px) }        // panting
 
+        if metric == .energy {   // the spark crackles: small zigzags beside its head, flickering
+            let zap = Color(red: 1, green: 0.93, blue: 0.45)
+            for (sx, flip) in [(CGFloat(-9), tick % 2 == 0), (w + 3, tick % 2 == 1)] where flip || !asleep {
+                for (i, dx) in [0, 3, 0, 3].enumerated() { dot(sx + CGFloat(dx), 2 + CGFloat(i) * 3, zap, 3, 3) }
+            }
+        }
         let sweat: [(CGFloat, CGFloat)] = [(-5, 14), (w + 2, 8), (-6, 2), (w + 3, 22)]
         for (sx, sy) in sweat.prefix(max(heat - 1, 0)) { dot(sx, sy + CGFloat(tick % 3) * 2, Color(red: 0.45, green: 0.75, blue: 1), 3, 5) }
         if heat >= 4 || angry {
@@ -289,6 +273,7 @@ struct Companion: View {
     @ObservedObject var store: Store
     var forced: (asleep: Bool, heat: Int)? = nil   // for --preview
     var forcedCompact: Bool? = nil
+    var forcedMetric: Metric? = nil
     var window: () -> NSWindow? = { nil }
     @State private var tick = 0
     @State private var dragStart: (mouse: NSPoint, origin: NSPoint)?
@@ -296,51 +281,59 @@ struct Companion: View {
     private let timer = Timer.publish(every: 0.25, on: .main, in: .common).autoconnect()
 
     var body: some View {
-        let p = Palette(scheme: scheme), total = store.total.mid
-        let c = forced.map { (containers[$0.heat].name, containers[$0.heat].sprite, 0.6, $0.heat) } ?? container(for: total)
+        let metric = forcedMetric ?? store.metric, impact = store.impact, total = metric.of(impact).mid
+        let p = Palette(scheme: scheme, metric: metric)
+        let c = forced.map { (rung: metric.ladder[$0.heat], fill: 0.6, level: $0.heat) } ?? rung(for: total, metric)
         let tipList = tips(store), secs = tick / 4, compact = forcedCompact ?? store.compact
         let roasting = store.roasting && !compact, angry = roasting
-        let tip = roasting ? roastShouts[(secs / 3) % roastShouts.count]
+        let tip = roasting ? metric.shouts[(secs / 3) % metric.shouts.count]
             : secs % 24 < 8 ? tipList[(secs / 24) % tipList.count] : nil   // speaks for 8 s every 24 s
         VStack(alignment: .leading, spacing: 10) {
-            Scene(asleep: (forced?.asleep ?? !store.active) && !angry, heat: c.3, tick: tick, tip: compact ? nil : tip,
-                  angry: angry, height: compact ? 64 : 100, rightMargin: compact ? 0 : 22)
-            if roasting { RoastView(store: store) } else if store.showSetup && !compact { BrowserSetup(store: store) }
+            Scene(asleep: (forced?.asleep ?? !store.active) && !angry, heat: c.level, tick: tick, tip: compact ? nil : tip,
+                  metric: metric, angry: angry, height: compact ? 64 : 100, rightMargin: compact ? 0 : 22)
+            if roasting { RoastView(store: store, metric: metric) } else if store.showSetup && !compact { BrowserSetup(store: store) }
             if compact {   // minimal: Tracky, the total and where most of it came from
                 VStack(spacing: 2) {
-                    Text("≈ " + fmt(total)).font(.system(size: 15, weight: .bold)).monospacedDigit()
-                    if let top = slices(store).first {
+                    Text("≈ " + metric.fmt(total)).font(.system(size: 15, weight: .bold)).monospacedDigit()
+                    if let top = slices(store, metric).first {
                         Text(top.label).font(.system(size: 10)).foregroundStyle(.secondary).lineLimit(1)
                     }
                 }
                 .frame(maxWidth: .infinity)
             } else if !roasting {
-                HStack(alignment: .firstTextBaseline) {
-                    Text("Water").font(.system(size: 14, weight: .semibold))
-                    Text("last \(Int(store.hours))h").font(.system(size: 12)).foregroundStyle(.secondary)
-                    Spacer()
-                    Text("≈ " + fmt(total)).font(.system(size: 15, weight: .bold)).monospacedDigit()
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(alignment: .firstTextBaseline) {
+                        Text(metric.name).font(.system(size: 14, weight: .semibold))
+                        Text("last \(Int(store.hours))h").font(.system(size: 12)).foregroundStyle(.secondary)
+                        Spacer()
+                        Text("≈ " + metric.fmt(total)).font(.system(size: 15, weight: .bold)).monospacedDigit()
+                    }
+                    Text(others(metric, impact)).font(.system(size: 11)).foregroundStyle(.secondary)
                 }
                 GeometryReader { g in
                     ZStack(alignment: .leading) {
                         Capsule().fill(p.track)
-                        Capsule().fill(p.water).frame(width: max(g.size.width * c.2, c.2 > 0 ? 8 : 0))
+                        Capsule().fill(p.body).frame(width: max(g.size.width * c.fill, c.fill > 0 ? 8 : 0))
                     }
                 }
                 .frame(height: 8)
                 HStack(spacing: 6) {
-                    Canvas { ctx, _ in draw(c.1, in: ctx, at: .zero, px: 2, ink: p.outline, fill: c.2, p) }
-                        .frame(width: CGFloat(c.1.map(\.count).max() ?? 0) * 2, height: CGFloat(c.1.count) * 2)
-                    Text("\(Int(c.2 * 100))% of a \(c.0)").font(.system(size: 12)).foregroundStyle(.secondary)
+                    if let sprite = c.rung.sprite {
+                        Canvas { ctx, _ in draw(sprite, in: ctx, at: .zero, px: 2, ink: p.outline, fill: c.fill, p) }
+                            .frame(width: CGFloat(sprite.map(\.count).max() ?? 0) * 2, height: CGFloat(sprite.count) * 2)
+                    } else if let symbol = c.rung.symbol {
+                        Image(systemName: symbol).font(.system(size: 11)).foregroundStyle(p.outline)
+                    }
+                    Text("\(Int(c.fill * 100))% of \(c.rung.name)").font(.system(size: 12)).foregroundStyle(.secondary)
                 }
-                let parts = slices(store), sum = parts.reduce(0) { $0 + $1.liters }
+                let parts = slices(store, metric), sum = parts.reduce(0) { $0 + $1.amount }
                 if sum > 0 {
                     Divider()
                     GeometryReader { g in   // the whole bar is the total; each slice is one model and source
                         HStack(spacing: 2) {
                             ForEach(parts.indices, id: \.self) { i in
                                 Rectangle().fill(parts[i].color)
-                                    .frame(width: max((g.size.width - CGFloat(parts.count - 1) * 2) * parts[i].liters / sum, 2))
+                                    .frame(width: max((g.size.width - CGFloat(parts.count - 1) * 2) * parts[i].amount / sum, 2))
                             }
                         }
                         .clipShape(Capsule())
@@ -352,7 +345,7 @@ struct Companion: View {
                                 RoundedRectangle(cornerRadius: 2).fill(parts[i].color).frame(width: 8, height: 8)
                                 Text(parts[i].label).lineLimit(1)
                                 Spacer()
-                                Text(fmt(parts[i].liters)).monospacedDigit().foregroundStyle(.secondary)
+                                Text(metric.fmt(parts[i].amount)).monospacedDigit().foregroundStyle(.secondary)
                             }
                             .font(.system(size: 11))
                         }
@@ -389,7 +382,7 @@ struct Companion: View {
                     Button { store.roasting = false; store.showSetup.toggle() } label: { globe }
                         .buttonStyle(.plain)
                         .help(store.browserOn ? "Browser tracking is on" : "Browser tracking is off · click to set up")
-                    // Roast: the card swaps to funny equivalents of the water.
+                    // Roast: the card swaps to funny equivalents of the chosen metric.
                     Button { store.showSetup = false; store.roasting.toggle() } label: {
                         Image(systemName: "flame.fill").font(.system(size: 12)).foregroundStyle(.orange).padding(.horizontal, 10).padding(.bottom, 10)
                             .contentShape(Rectangle())
@@ -403,40 +396,29 @@ struct Companion: View {
     }
 }
 
-let roastShouts = ["Seriously?!", "I'm boiling!", "All that for this?!"]
-
-/// What the same water could have been. Sizes are everyday amounts; the shower uses 2.1 gal/min
-/// (home-water-works.org) and the tomato a global average of 214 L per kg (Hoekstra & Chapagain 2007), at ~100 g each.
-let roastItems: [(emoji: String, liters: Double, one: String, many: String)] = [
-    ("☕️", 0.03, "espresso", "espressos"),
-    ("🫖", 0.25, "cup of tea", "cups of tea"),
-    ("🚿", 7.95 / 60, "second of shower", "seconds of shower"),
-    ("🚽", 6, "toilet flush", "toilet flushes"),
-    ("🍅", 21.4, "tomato, grown", "tomatoes, grown"),
-]
-
-func roastLine(_ item: (emoji: String, liters: Double, one: String, many: String), _ total: Double) -> String {
-    let n = total / item.liters
-    return n >= 10 ? "\(Int(n)) \(item.many)" : n >= 1.05 ? String(format: "%.1f %@", n, item.many)
-        : n >= 0.95 ? "1 \(item.one)" : "\(max(Int(n * 100), 1))% of a \(item.one)"
+/// The two metrics not chosen, reported on the side: "Energy 12 Wh · CO₂ 4.6 g".
+func others(_ metric: Metric, _ impact: Impact) -> String {
+    Metric.allCases.filter { $0 != metric }.map { "\($0.name) \($0.fmt($0.of(impact).mid))" }.joined(separator: " · ")
 }
 
-/// The roast: Tracky is furious and lists what your AI water could have been instead.
+/// The roast: Tracky is furious and lists what the same amount could have been instead.
 struct RoastView: View {
     @ObservedObject var store: Store
+    let metric: Metric
 
     var body: some View {
         VStack(alignment: .leading, spacing: 7) {
             HStack {
-                Text("≈ \(fmt(store.total.mid)) could have been…").font(.system(size: 13, weight: .semibold))
+                Text("≈ \(metric.fmt(metric.of(store.impact).mid)) could have been…").font(.system(size: 13, weight: .semibold))
                 Spacer()
                 Button { store.roasting = false } label: { Image(systemName: "xmark").font(.system(size: 10, weight: .bold)) }
                     .buttonStyle(.plain).foregroundStyle(.secondary)
             }
-            ForEach(roastItems.indices, id: \.self) { i in
+            let items = metric.roast, total = metric.of(store.impact).mid
+            ForEach(items.indices, id: \.self) { i in
                 HStack(spacing: 8) {
-                    Text(roastItems[i].emoji)
-                    Text(roastLine(roastItems[i], store.total.mid)).font(.system(size: 12))
+                    Text(items[i].emoji)
+                    Text(roastLine(items[i], total)).font(.system(size: 12))
                 }
             }
         }
@@ -526,7 +508,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if UserDefaults.standard.object(forKey: "showCompanion") as? Bool ?? true { panel.orderFront(nil) }
 
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        statusItem.button?.image = dropIcon()
+        statusItem.button?.image = trackyIcon(store.metric)
         statusItem.button?.imagePosition = .imageLeading
         statusItem.menu = NSMenu()
         statusItem.menu?.autoenablesItems = false
@@ -534,7 +516,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // @Published fires before the new value is stored, so read the total on the next run-loop turn.
         store.objectWillChange.receive(on: RunLoop.main).sink { [weak self] in
             guard let self else { return }
-            statusItem.button?.title = " " + fmt(store.total.mid)
+            statusItem.button?.image = trackyIcon(store.metric)
+            statusItem.button?.title = " " + store.metric.fmt(store.total.mid)
             // The legend grows and shrinks the card; keep its top edge where the user left it.
             if let host = panel.contentView, host.fittingSize.height != panel.frame.height {
                 var f = panel.frame
@@ -547,9 +530,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     func menuNeedsUpdate(_ menu: NSMenu) {
         menu.removeAllItems()
-        menu.addItem(row("Water · last \(Int(store.hours))h", "≈ " + fmt(store.total.mid), bold: true))
-        for slice in slices(store) { menu.addItem(row(slice.label, fmt(slice.liters))) }
-        if slices(store).isEmpty { menu.addItem(row("No AI activity yet", "")) }
+        let m = store.metric
+        menu.addItem(row("\(m.name) · last \(Int(store.hours))h", "≈ " + m.fmt(store.total.mid), bold: true))
+        menu.addItem(row(others(m, store.impact), ""))
+        menu.addItem(.separator())
+        for slice in slices(store, m) { menu.addItem(row(slice.label, m.fmt(slice.amount))) }
+        if slices(store, m).isEmpty { menu.addItem(row("No AI activity yet", "")) }
         menu.addItem(.separator())
         menu.addItem(row("💡 " + tips(store)[0], ""))
         menu.addItem(.separator())
@@ -561,6 +547,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(browser)
         menu.addItem(.separator())
 
+        let track = NSMenuItem(title: "Track", action: nil, keyEquivalent: "")
+        track.submenu = NSMenu()
+        for (i, metric) in Metric.allCases.enumerated() {
+            let item = NSMenuItem(title: metric.name, action: #selector(setMetric(_:)), keyEquivalent: "")
+            item.target = self; item.tag = i; item.state = metric == m ? .on : .off
+            item.image = NSImage(systemSymbolName: metric.symbol, accessibilityDescription: nil)
+            track.submenu?.addItem(item)
+        }
+        menu.addItem(track)
         let period = NSMenuItem(title: "Period", action: nil, keyEquivalent: "")
         period.submenu = NSMenu()
         for h in [1, 5, 24] {
@@ -596,6 +591,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     @objc func setHours(_ sender: NSMenuItem) { store.hours = Double(sender.tag) }
+    @objc func setMetric(_ sender: NSMenuItem) { store.metric = Metric.allCases[sender.tag] }
     /// The EcoLogits method Tracky implements.
     @objc func openMethodology() { NSWorkspace.shared.open(URL(string: "https://ecologits.ai/latest/methodology/llm_inference/")!) }
     @objc func toggleLogin() {
@@ -614,9 +610,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         UserDefaults.standard.set(panel.isVisible, forKey: "showCompanion")
     }
 
-    /// The drop sprite as a template image for the menu bar.
-    private func dropIcon() -> NSImage {
-        let rows = Sprites.awake, px: CGFloat = 1.4
+    /// Tracky's sprite (drop, spark or fire) as a template image for the menu bar.
+    private func trackyIcon(_ m: Metric) -> NSImage {
+        let rows = Sprites.awake(m), px: CGFloat = 1.4
         let img = NSImage(size: NSSize(width: 12 * px, height: 11 * px), flipped: true) { _ in
             for (y, row) in rows.enumerated() {
                 for (x, ch) in row.enumerated() where "#%b".contains(ch) {
@@ -633,15 +629,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 // MARK: - Entry
 
 let args = CommandLine.arguments
-if args.contains("--selftest") { selfTest(catalog: catalog); browserSelfTest(catalog: catalog); tipsSelfTest(); localSelfTest(); exit(0) }
+if args.contains("--selftest") { selfTest(catalog: catalog); browserSelfTest(catalog: catalog); tipsSelfTest(); localSelfTest(); metricSelfTest(); exit(0) }
 if args.contains("--dump") {   // what Tracky sees in the last 24 h
     for (name, us) in Dictionary(grouping: Store().load(), by: { $0.model.name }) {
-        let w = us.reduce(Liters()) { $0 + $1.water }
-        print(name, us.count, "requests", us.reduce(0) { $0 + $1.output }, "output tokens", fmt(w.min), "–", fmt(w.max))
+        let i = us.reduce(Impact()) { $0 + $1.impact }
+        print(name, us.count, "requests", us.reduce(0) { $0 + $1.output }, "output tokens |",
+              Metric.allCases.map { m in "\(m.name) \(m.fmt(m.of(i).min))–\(m.fmt(m.of(i).max))" }.joined(separator: " | "))
     }
     exit(0)
 }
-if let i = args.firstIndex(of: "--preview"), i + 1 < args.count {   // render every heat level, awake (light) and asleep (dark), to a PNG
+if let i = args.firstIndex(of: "--preview"), i + 1 < args.count {   // render each metric's Tracky, awake (light) and asleep (dark), to a PNG
     let store = Store()
     // Real usage plus a few sample browser events, so the legend shows every kind of source.
     let samples = [#"{"site":"claude.ai","model":"claude-sonnet-5-5","tokens":4000}"#, #"{"site":"chatgpt.com","model":"gpt-5-2","tokens":3000}"#]
@@ -651,8 +648,10 @@ if let i = args.firstIndex(of: "--preview"), i + 1 < args.count {   // render ev
     store.usages = store.load() + samples.compactMap { BrowserEvent(json: Data($0.utf8))?.usage(at: Date(), catalog: catalog) }
     let sheet = VStack(spacing: 16) {
         ForEach([ColorScheme.light, .dark], id: \.self) { scheme in
-            HStack(alignment: .top, spacing: 16) {   // light: awake at each heat level; dark: asleep
-                ForEach(0..<containers.count, id: \.self) { Companion(store: store, forced: (scheme == .dark, $0), forcedCompact: false) }
+            HStack(alignment: .top, spacing: 16) {   // light: awake; dark: asleep. Each metric at a cool, hot and overheated level.
+                ForEach(Metric.allCases, id: \.self) { m in
+                    ForEach([0, 3, 5], id: \.self) { Companion(store: store, forced: (scheme == .dark, $0), forcedCompact: false, forcedMetric: m) }
+                }
                 Companion(store: store, forced: (scheme == .dark, 0), forcedCompact: true)
             }
             .padding(16).background(scheme == .dark ? Color(white: 0.05) : Color(white: 0.86)).environment(\.colorScheme, scheme)

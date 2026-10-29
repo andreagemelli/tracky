@@ -1,14 +1,25 @@
 import Foundation
 
-// Water estimate per LLM request, ported from EcoLogits 0.11.3 (MPL-2.0):
+// Energy, CO₂ and water per LLM request, ported from EcoLogits 0.11.3 (MPL-2.0):
 // ecologits/impacts/llm.py for energy, ecologits/tracers/utils.py for data centers.
 // https://ecologits.ai/latest/methodology/llm_inference/
 
-/// Liters of water, as the min–max range EcoLogits reports.
-struct Liters {
+/// A min–max range, as EcoLogits reports every impact.
+struct Amount {
     var min = 0.0, max = 0.0
     var mid: Double { (min + max) / 2 }
-    static func + (a: Liters, b: Liters) -> Liters { Liters(min: a.min + b.min, max: a.max + b.max) }
+    static func + (a: Amount, b: Amount) -> Amount { Amount(min: a.min + b.min, max: a.max + b.max) }
+    static func exactly(_ v: Double) -> Amount { Amount(min: v, max: v) }
+}
+
+/// What one request cost: energy in kWh, CO₂ in kg (CO₂-equivalent, usage only), water in liters.
+struct Impact {
+    var energy = Amount(), co2 = Amount(), water = Amount()
+    static func + (a: Impact, b: Impact) -> Impact { Impact(energy: a.energy + b.energy, co2: a.co2 + b.co2, water: a.water + b.water) }
+    /// Electricity used where nothing else is known about it: CO₂ and water follow from the grid.
+    static func fromEnergy(kWh: Double, kgCO2PerKWh: Double, litersPerKWh: Double) -> Impact {
+        Impact(energy: .exactly(kWh), co2: .exactly(kWh * kgCO2PerKWh), water: .exactly(kWh * litersPerKWh))
+    }
 }
 
 struct Model {
@@ -23,30 +34,35 @@ enum EcoLogits {
     static let latAlpha = 0.0006785088094353663, latBeta = 0.0003119310311688259, latGamma = 0.019473717579473387
     static let batch = 64.0, gpuMemoryGB = 80.0, serverGPUs = 8.0, serverPowerKW = 1.2, quantBits = 16.0
 
-    // tracers/utils.py PROVIDER_CONFIG_MAP: data-center PUE and on-site WUE (L/kWh), plus the off-site
-    // WUE (L/kWh) of the data-center country from electricity_mixes.json (USA 3.1321).
-    static let providers: [String: (pue: ClosedRange<Double>, wue: ClosedRange<Double>, offsite: Double)] = [
-        "anthropic": (1.09...1.14, 0.13...0.999, 3.1321),
-        "openai": (1.2...1.2, 0.569...0.569, 3.1321),
-        "mistralai": (1.16...1.16, 0.09...0.09, 6.0315),   // SWE
-        // Not in EcoLogits: an unknown provider gets the widest PUE and WUE range above, with the
-        // world-average off-site WUE (WOR 3.908).
-        "other": (1.09...1.2, 0.09...0.999, 3.908),
+    // tracers/utils.py PROVIDER_CONFIG_MAP: data-center PUE and on-site WUE (L/kWh), plus the grid of the
+    // data-center country from electricity_mixes.json: CO₂ (kg/kWh) and off-site WUE (L/kWh).
+    // USA 0.3844 and 3.1321, SWE 0.03526 and 6.0315, world average (WOR) 0.45829 and 3.908.
+    static let providers: [String: (pue: ClosedRange<Double>, wue: ClosedRange<Double>, gwp: Double, offsite: Double)] = [
+        "anthropic": (1.09...1.14, 0.13...0.999, 0.3844, 3.1321),
+        "openai": (1.2...1.2, 0.569...0.569, 0.3844, 3.1321),
+        "mistralai": (1.16...1.16, 0.09...0.09, 0.03526, 6.0315),
+        // Not in EcoLogits: an unknown provider gets the widest PUE and WUE range above, on the world-average grid.
+        "other": (1.09...1.2, 0.09...0.999, 0.45829, 3.908),
     ]
 
-    static func water(_ m: Model, outputTokens: Int) -> Liters {
-        guard let p = providers[m.provider], outputTokens > 0 else { return Liters() }
-        func one(total: Double, active: Double, pue: Double, wue: Double) -> Double {
+    static func impact(_ m: Model, outputTokens: Int) -> Impact {
+        guard let p = providers[m.provider], outputTokens > 0 else { return Impact() }
+        /// IT energy of the request (kWh): GPUs plus the server's share while generating.
+        func it(total: Double, active: Double) -> Double {
             let n = Double(outputTokens)
             let gpuKWh = n * (gpuAlpha * exp(gpuBeta * batch) * active + gpuGamma) / 1000
             let perToken = m.tps.map { 1 / $0 } ?? (latAlpha * active + latBeta * batch + latGamma)
             let latency = n * perToken + (m.ttft ?? 0)
             let gpus = pow(2, ceil(log2(ceil(1.2 * total * quantBits / 8 / gpuMemoryGB))))
             let serverKWh = latency / 3600 * serverPowerKW * gpus / serverGPUs / batch
-            return (serverKWh + gpus * gpuKWh) * (wue + pue * p.offsite)
+            return serverKWh + gpus * gpuKWh
         }
-        return Liters(min: one(total: m.total.lowerBound, active: m.active.lowerBound, pue: p.pue.lowerBound, wue: p.wue.lowerBound),
-                      max: one(total: m.total.upperBound, active: m.active.upperBound, pue: p.pue.upperBound, wue: p.wue.upperBound))
+        let lo = it(total: m.total.lowerBound, active: m.active.lowerBound), hi = it(total: m.total.upperBound, active: m.active.upperBound)
+        let eLo = lo * p.pue.lowerBound, eHi = hi * p.pue.upperBound   // request energy = PUE × IT energy
+        return Impact(energy: Amount(min: eLo, max: eHi),
+                      co2: Amount(min: eLo * p.gwp, max: eHi * p.gwp),
+                      water: Amount(min: lo * (p.wue.lowerBound + p.pue.lowerBound * p.offsite),
+                                    max: hi * (p.wue.upperBound + p.pue.upperBound * p.offsite)))
     }
 }
 
@@ -98,7 +114,7 @@ struct Usage {
     let model: Model
     let output, thinking: Int
     let effort: String?
-    let water: Liters
+    let impact: Impact
 }
 
 /// Complete lines appended to `path` since the last call; a half-written last line waits for next time.
@@ -152,20 +168,26 @@ final class ClaudeCodeReader {
         seen.insert(id)
         let thinking = (usage["output_tokens_details"] as? [String: Any])?["thinking_tokens"] as? Int ?? 0
         return Usage(date: date, source: "Code", model: model, output: output, thinking: thinking,
-                     effort: d["perTurnEffort"] as? String, water: EcoLogits.water(model, outputTokens: output))
+                     effort: d["perTurnEffort"] as? String, impact: EcoLogits.impact(model, outputTokens: output))
     }
 }
 
 /// `Tracky --selftest`: the port must match EcoLogits 0.11.3 for 1,000 output tokens.
 func selfTest(catalog: Catalog) {
-    let expected: [(String, Double, Double)] = [   // from `llm_impacts(...).wcf`
-        ("claude-opus-5-5", 0.010032736340167416, 0.02376041785739516),
-        ("claude-haiku-5-5", 0.00018354885406522662, 0.0006034326662251073),
+    // From EcoLogits 0.11.3: llm_impacts(...).energy, .usage.gwp and .wcf for 1,000 output tokens.
+    let expected: [(String, (Double, Double), (Double, Double), (Double, Double))] = [
+        ("claude-opus-5-5", (0.003085698801768991, 0.005927633036420847), (0.0011861426194000003, 0.002278582139200174),
+         (0.010032736340167416, 0.02376041785739516)),
+        ("claude-haiku-5-5", (5.6452841961726475e-05, 0.0001505414352996398), (2.1700472450087657e-05, 5.786812772918154e-05),
+         (0.00018354885406522662, 0.0006034326662251073)),
+        ("mistral-medium-3.5", (0.0005596380397157117, 0.0005596380397157117), (1.9732837280375996e-05, 1.9732837280375996e-05),
+         (0.0034188770292818793, 0.0034188770292818793)),
     ]
-    for (name, lo, hi) in expected {
+    func near(_ a: Amount, _ want: (Double, Double)) -> Bool { abs(a.min - want.0) / want.0 < 1e-9 && abs(a.max - want.1) / want.1 < 1e-9 }
+    for (name, energy, co2, water) in expected {
         guard let m = catalog[name] else { fatalError("\(name) missing from models.json") }
-        let w = EcoLogits.water(m, outputTokens: 1000)
-        precondition(abs(w.min - lo) / lo < 1e-9 && abs(w.max - hi) / hi < 1e-9, "\(name): got \(w), want \(lo)–\(hi)")
+        let i = EcoLogits.impact(m, outputTokens: 1000)
+        precondition(near(i.energy, energy) && near(i.co2, co2) && near(i.water, water), "\(name): got \(i)")
     }
     print("selftest ok")
 }
