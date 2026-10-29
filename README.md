@@ -4,7 +4,7 @@ A small pixel companion that lives on your Mac and shows what your AI use costs,
 
 ![Tracky as a drop (water), a spark (energy) and a little fire (CO₂), cool, hot and overheated, awake in light mode and asleep in dark mode, with sample usage in the legend](docs/preview.png)
 
-- **Pick what Tracky tracks:** water, energy or CO₂, from *Track* in the menu. Tracky becomes a 💧 drop, a ⚡ spark or a 🔥 little fire, and the meter, the ladder and the roast follow. The other two are reported on the line under the total.
+- **Pick what Tracky tracks:** water, energy or CO₂, with the button under the flame (each click switches to the next) or from *Track* in the menu. Tracky becomes a 💧 drop, a ⚡ spark or a 🔥 little fire, and the meter, the ladder and the roast follow. The other two are reported on the line under the total.
 - **On the desktop:** a card you can drag anywhere. Tracky sleeps when no AI is working and paces and hops while one is. Double-click the card (or use the menu) to switch between the complete card and a minimal one with just Tracky, the total and the model that used the most.
 - **It heats up as you use more.** A bar fills toward the next everyday amount, and each one you pass makes Tracky hotter: happy, blushing, sweating, flushed and panting, steaming, then overheated and red.
 

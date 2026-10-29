@@ -215,7 +215,7 @@ struct Scene: View {
         let period = 40 - heat * 5   // paces faster as it heats up
         let phase = Double(tick % period) / Double(period)
         let x = angry ? (size.width - w) / 2 + (tick % 2 == 0 ? -2 : 2)
-            : asleep ? (size.width - w) / 2 : 12 + (size.width - w - 24) * (0.5 - 0.5 * cos(phase * 2 * .pi))
+            : asleep ? (size.width - w) / 2 : 12 + (size.width - w - 24 - rightMargin) * (0.5 - 0.5 * cos(phase * 2 * .pi))
         let y = groundY - h - (!asleep && !angry && tick % 2 == 0 ? 3 : 0)
         func dot(_ dx: CGFloat, _ dy: CGFloat, _ c: Color, _ s: CGFloat = 3, _ t: CGFloat = 3) {
             ctx.fill(Path(CGRect(x: x + dx, y: y + dy, width: s, height: t)), with: .color(c))
@@ -389,6 +389,15 @@ struct Companion: View {
                     }
                     .buttonStyle(.plain)
                     .help("Roast me")
+                    // Switch what Tracky tracks: water → energy → CO₂.
+                    let next = Metric.allCases[(Metric.allCases.firstIndex(of: metric)! + 1) % Metric.allCases.count]
+                    Button { store.metric = next } label: {
+                        Image(systemName: metric.symbol).font(.system(size: 12))
+                            .foregroundStyle(Color(red: metric.tint.0, green: metric.tint.1, blue: metric.tint.2))
+                            .padding(.horizontal, 10).padding(.bottom, 10).contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .help("Tracking \(metric.noun) · click for \(next.noun)")
                 }
             }
         }
