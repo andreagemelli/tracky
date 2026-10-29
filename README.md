@@ -22,7 +22,7 @@ A small pixel water drop that lives on your Mac and shows how much water your AI
 - **Browser tracking, at a glance:** a globe in the card's corner with a red dot when it's off and a green one when it's on. Click it to set it up in two steps (on the minimal card the globe only shows the status).
 - **Menu bar:** the drop and the total. Click it for the same breakdown, a tip, the period (last 1, 5 or 24 hours), switches for the minimal card, to hide the card and to open Tracky at login (on by default), and *How is this estimated?*, which opens the EcoLogits method Tracky implements.
 
-Everything stays on your Mac. Tracky records only which model ran, when, and how many tokens it produced. It never stores prompts or replies, needs no macOS permissions and makes no network calls.
+Everything stays on your Mac. Tracky records only which model ran, when, and how many tokens it produced. It never stores prompts or replies, needs no macOS permissions, and nothing leaves your Mac: its only network request is to a llama.cpp server on your own Mac, if one is running.
 
 ## What works, and what's been tested
 
@@ -31,12 +31,14 @@ Tracky may work with tools outside this list, but only what's marked *tested* ha
 | Source | How Tracky sees it | Status |
 |---|---|---|
 | Claude Code (terminal, and the Claude desktop app's Code tab) | its local logs: exact model and token counts | tested |
+| llama.cpp (`llama-server --metrics` on the default port 8080) | its metrics: exact tokens and generation time | tested |
 | claude.ai in Chrome | extension, model from the page | tested |
 | chatgpt.com in Chrome | extension, model from the page when shown (GPT-5 otherwise) | tested |
 | Google AI Overviews and AI Mode in Chrome | extension, one prompt per AI answer, follow-ups included | tested (English and Italian Google) |
 | gemini.google.com in Chrome | extension | built, not confirmed |
-| Other AI chat sites in Chrome: Qwen, DeepSeek, Le Chat, Perplexity, Grok, Kimi, Copilot, Z.ai, HuggingChat, Poe | extension's general meter | built, checked only on a simulated chat |
-| Claude desktop app's chat, Cowork, desktop chat apps, Firefox, Safari, local models | — | not yet |
+| Qwen and Z.ai in Chrome | extension's general meter | tested |
+| Other AI chat sites in Chrome: DeepSeek, Le Chat, Perplexity, Grok, Kimi, Copilot, HuggingChat, Poe | extension's general meter | built, not confirmed |
+| Ollama, Claude desktop app's chat, Cowork, desktop chat apps, Firefox, Safari | — | not yet |
 
 ## Install
 
@@ -75,6 +77,8 @@ The dot turns green once the extension checks in. *Turn off* in the same box rem
 
 **Local tools.** Tracky reads Claude Code's own logs (`~/.claude/projects/*/*.jsonl`): for each reply, the model, output and thinking tokens, and effort. These counts are exact.
 
+**Local models (llama.cpp).** Start the server with `--metrics` and Tracky reads its counters every 10 seconds: new output tokens and the seconds spent generating, with the model's file name. Each stretch of generation is stored as one line in `~/Library/Application Support/Tracky/local.jsonl`. If the server was already running when Tracky started, only what comes after counts.
+
 **The browser (optional).** When an AI reply finishes, the extension sends Tracky the site, the model and an approximate token count, never the text. Tracky stores each event as one line in `~/Library/Application Support/Tracky/browser.jsonl`. There are two ways it notices replies:
 
 - **Dedicated watchers** for claude.ai, ChatGPT, Gemini and Google search. They read each site's page structure, which also gives the model name. Sites can change that structure without notice.
@@ -91,10 +95,11 @@ Tracky is a Swift port of the [EcoLogits](https://ecologits.ai) LLM inference me
    `water = IT energy × (WUE on-site + PUE × WUE off-site)`
 3. **Model sizes** come from EcoLogits' `models.json`, bundled unchanged in `Resources/`. Closed models (Claude, GPT) don't publish their sizes, so EcoLogits estimates a range. Tracky computes the min–max range and shows its midpoint, marked `≈`.
 
-Two cases go beyond EcoLogits:
+Three cases go beyond EcoLogits:
 
 - **Google** (Gemini and AI Overviews): Tracky uses Google's own measurement, [0.26 mL of water per median Gemini text prompt](https://services.google.com/fh/files/misc/measuring_the_environmental_impact_of_delivering_ai_at_google_scale.pdf).
 - **Models EcoLogits doesn't know** (Qwen, DeepSeek, Kimi, Grok and others): the same formula with an assumed size range of 200–1,000B total and 20–100B active parameters, the widest data-center figures EcoLogits uses, and world-average electricity water. Treat these numbers as an order of magnitude.
+- **Local models** run on your Mac, so there's no data center: energy is generation time × the Mac's extra power while generating, and water is that energy × world-average electricity water (3.9 L per kWh, from EcoLogits' electricity data). The extra power was measured on a MacBook Pro M4 with battery telemetry: 23.2 W generating versus 4.0 W idle, so 19.2 W. A 400-token reply from a 350M model takes about 2 seconds, about 0.04 mL. The same figure is used for every model and Mac for now; bigger models draw more.
 
 For scale, by EcoLogits, 1,000 output tokens from Opus 5.5 cost about 10–24 mL, and from Haiku 5.5 about 0.2–0.6 mL.
 

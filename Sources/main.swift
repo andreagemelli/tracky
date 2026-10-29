@@ -24,7 +24,7 @@ final class Store: ObservableObject {
     @Published var hours: Double = UserDefaults.standard.object(forKey: "hours") as? Double ?? 5 {
         didSet { UserDefaults.standard.set(hours, forKey: "hours") }
     }
-    private let reader = ClaudeCodeReader(), browser = BrowserReader()
+    private let reader = ClaudeCodeReader(), browser = BrowserReader(), local = LocalReader(), llama = LlamaCpp()
     private var kept: [Usage] = []   // owned by `queue` (or the caller in --dump/--preview)
     private let queue = DispatchQueue(label: "tracky.read", qos: .utility)
 
@@ -37,11 +37,13 @@ final class Store: ObservableObject {
     func load() -> [Usage] {
         let cutoff = Date().addingTimeInterval(-24 * 3600)
         kept = kept.filter { $0.date > cutoff } + reader.read(since: cutoff, catalog: catalog) + browser.read(since: cutoff, catalog: catalog)
+            + local.read(since: cutoff)
         return kept
     }
 
     private func refresh() {
         queue.async { [self] in
+            llama.poll()
             let all = load()
             DispatchQueue.main.async { self.usages = all; self.refreshLink() }
         }
@@ -69,7 +71,9 @@ final class Store: ObservableObject {
 // MARK: - Wording
 
 func fmt(_ l: Double) -> String {
-    l >= 1 ? String(format: "%.2f L", l) : l * 1000 >= 10 ? String(format: "%.0f mL", l * 1000) : String(format: "%.1f mL", l * 1000)
+    let ml = l * 1000
+    return l >= 1 ? String(format: "%.2f L", l) : ml >= 10 ? String(format: "%.0f mL", ml)
+        : ml >= 1 ? String(format: "%.1f mL", ml) : ml >= 0.005 ? String(format: "%.2f mL", ml) : ml > 0 ? "<0.01 mL" : "0 mL"
 }
 func pretty(_ name: String) -> String {
     if name.first?.isUppercase == true { return name }   // already a display name, e.g. "Google AI Overview"
@@ -147,6 +151,7 @@ func tipsSelfTest() {
     precondition(step("gpt-5.2") == "gpt-5-mini" && step("gpt-5-mini") == "gpt-5-nano")
     precondition(roastLine(roastItems[1], 4.41) == "17 cups of tea" && roastLine(roastItems[3], 6) == "1 toilet flush")
     precondition(roastLine(roastItems[3], 9) == "1.5 toilet flushes" && roastLine(roastItems[4], 4.41) == "20% of a tomato, grown")
+    precondition(fmt(0.000017) == "0.02 mL" && fmt(0.0000001) == "<0.01 mL" && fmt(0.0042) == "4.2 mL" && fmt(4.41) == "4.41 L")
     print("tips selftest ok")
 }
 
@@ -628,7 +633,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 // MARK: - Entry
 
 let args = CommandLine.arguments
-if args.contains("--selftest") { selfTest(catalog: catalog); browserSelfTest(catalog: catalog); tipsSelfTest(); exit(0) }
+if args.contains("--selftest") { selfTest(catalog: catalog); browserSelfTest(catalog: catalog); tipsSelfTest(); localSelfTest(); exit(0) }
 if args.contains("--dump") {   // what Tracky sees in the last 24 h
     for (name, us) in Dictionary(grouping: Store().load(), by: { $0.model.name }) {
         let w = us.reduce(Liters()) { $0 + $1.water }
