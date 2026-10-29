@@ -1,5 +1,8 @@
 # Tracky
 
+> [!NOTE]
+> **Work in progress.** Tracky is young, and some measurements may still be imprecise: closed models don't publish their sizes, browser token counts are estimated from reply length, and local power uses one Mac's measurement. Treat the numbers as informed estimates. Contributions are more than welcome: issues, fixes, new sources, better data. See [What's been tested](#whats-been-tested) for where things stand.
+
 A small pixel companion for your Mac that shows what your AI use costs while you use it: **water, energy and CO₂**. Tracky reads the logs AI tools already keep on your Mac, turns each reply into an estimate, and heats up as the total grows. Nothing leaves your Mac.
 
 ![Tracky tracking water as a drop, energy as a spark and CO₂ as a little fire](docs/hero.png)
