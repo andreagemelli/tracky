@@ -17,7 +17,6 @@ final class Store: ObservableObject {
     @Published var chromeConnected = ChromeLink.connected
     @Published var showSetup = false
     @Published var roasting = false
-    @Published var angryUntil = Date.distantPast
     func refreshLink() { browserOn = ChromeLink.on; chromeConnected = ChromeLink.connected }
     @Published var compact = UserDefaults.standard.bool(forKey: "compact") {
         didSet { UserDefaults.standard.set(compact, forKey: "compact") }
@@ -124,7 +123,7 @@ func tips(_ s: Store) -> [String] {
     var out: [String] = []
     if let last = s.usages.max(by: { $0.date < $1.date }) {
         if last.source == "Search" {
-            out += ["Use Google's Web tab: no AI answer", "AI Mode follow-ups cost water"]
+            out += ["Try Google's Web tab: no AI", "AI Mode follow-ups cost water"]
         }
         if let alt = lighter(than: last.model) {
             let ratio = EcoLogits.water(last.model, outputTokens: 1000).mid / EcoLogits.water(alt, outputTokens: 1000).mid
@@ -218,6 +217,7 @@ struct Scene: View {
     let asleep: Bool, heat: Int, tick: Int, tip: String?
     var angry = false   // roasting: red, shaking and steaming whatever the heat
     var height: CGFloat = 100
+    var rightMargin: CGFloat = 0   // room left free for the card's corner icons
     @Environment(\.colorScheme) var scheme
 
     var body: some View {
@@ -258,9 +258,9 @@ struct Scene: View {
 
         if let tip {
             let text = ctx.resolve(Text(tip).font(.system(size: 11, weight: .medium)).foregroundColor(p.ink))
-            let ts = text.measure(in: CGSize(width: size.width - 16, height: 40))
+            let ts = text.measure(in: CGSize(width: size.width - rightMargin - 16, height: 40))
             let bw = ts.width + 16, bh = ts.height + 10
-            let box = CGRect(x: min(max(x + w / 2 - bw / 2, 0), size.width - bw), y: 0, width: bw, height: bh)
+            let box = CGRect(x: min(max(x + w / 2 - bw / 2, 0), size.width - rightMargin - bw), y: 0, width: bw, height: bh)
             let tx = min(max(x + w / 2, box.minX + 12), box.maxX - 12)
             var tail = Path()
             tail.move(to: CGPoint(x: tx - 5, y: box.maxY - 0.5))
@@ -294,16 +294,21 @@ struct Companion: View {
         let p = Palette(scheme: scheme), total = store.total.mid
         let c = forced.map { (containers[$0.heat].name, containers[$0.heat].sprite, 0.6, $0.heat) } ?? container(for: total)
         let tipList = tips(store), secs = tick / 4, compact = forcedCompact ?? store.compact
-        let roasting = store.roasting && !compact, angry = roasting || store.angryUntil > Date()
+        let roasting = store.roasting && !compact, angry = roasting
         let tip = roasting ? roastShouts[(secs / 3) % roastShouts.count]
             : secs % 24 < 8 ? tipList[(secs / 24) % tipList.count] : nil   // speaks for 8 s every 24 s
         VStack(alignment: .leading, spacing: 10) {
             Scene(asleep: (forced?.asleep ?? !store.active) && !angry, heat: c.3, tick: tick, tip: compact ? nil : tip,
-                  angry: angry, height: compact ? 64 : 100)
+                  angry: angry, height: compact ? 64 : 100, rightMargin: compact ? 0 : 22)
             if roasting { RoastView(store: store) } else if store.showSetup && !compact { BrowserSetup(store: store) }
-            if compact {   // minimal: just Tracky and the total
-                Text("≈ " + fmt(total)).font(.system(size: 15, weight: .bold)).monospacedDigit()
-                    .frame(maxWidth: .infinity)
+            if compact {   // minimal: Tracky, the total and where most of it came from
+                VStack(spacing: 2) {
+                    Text("≈ " + fmt(total)).font(.system(size: 15, weight: .bold)).monospacedDigit()
+                    if let top = slices(store).first {
+                        Text(top.label).font(.system(size: 10)).foregroundStyle(.secondary).lineLimit(1)
+                    }
+                }
+                .frame(maxWidth: .infinity)
             } else if !roasting {
                 HStack(alignment: .firstTextBaseline) {
                     Text("Water").font(.system(size: 14, weight: .semibold))
@@ -366,16 +371,7 @@ struct Companion: View {
             }
             .onEnded { _ in dragStart = nil })
         .overlay(alignment: .topTrailing) {
-            HStack(spacing: 0) {
-                // Roast: the full card swaps to funny equivalents; the minimal one just gets angry for a moment.
-                Button {
-                    if compact { store.angryUntil = Date().addingTimeInterval(3) } else { store.showSetup = false; store.roasting.toggle() }
-                } label: {
-                    Image(systemName: "flame.fill").font(.system(size: 12)).foregroundStyle(.orange).padding(.vertical, 10).padding(.leading, 10)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .help("Roast me")
+            VStack(spacing: 0) {
                 // Browser tracking status: red off, green on. Only the full card opens the setup.
                 let globe = Image(systemName: "globe").font(.system(size: 12)).foregroundStyle(.secondary)
                     .overlay(alignment: .bottomTrailing) {
@@ -388,6 +384,13 @@ struct Companion: View {
                     Button { store.roasting = false; store.showSetup.toggle() } label: { globe }
                         .buttonStyle(.plain)
                         .help(store.browserOn ? "Browser tracking is on" : "Browser tracking is off · click to set up")
+                    // Roast: the card swaps to funny equivalents of the water.
+                    Button { store.showSetup = false; store.roasting.toggle() } label: {
+                        Image(systemName: "flame.fill").font(.system(size: 12)).foregroundStyle(.orange).padding(.horizontal, 10).padding(.bottom, 10)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .help("Roast me")
                 }
             }
         }
@@ -640,13 +643,12 @@ if let i = args.firstIndex(of: "--preview"), i + 1 < args.count {   // render ev
         + Array(repeating: #"{"site":"google-ai-overview"}"#, count: 40)
     store.showSetup = args.contains("--setup")
     store.roasting = args.contains("--roast")
-    if store.roasting { store.angryUntil = .distantFuture }   // so the minimal cards show the angry gimmick too
     store.usages = store.load() + samples.compactMap { BrowserEvent(json: Data($0.utf8))?.usage(at: Date(), catalog: catalog) }
     let sheet = VStack(spacing: 16) {
         ForEach([ColorScheme.light, .dark], id: \.self) { scheme in
             HStack(alignment: .top, spacing: 16) {   // light: awake at each heat level; dark: asleep
-                ForEach(0..<containers.count, id: \.self) { Companion(store: store, forced: (scheme == .dark, $0)) }
-                if store.roasting { Companion(store: store, forced: (false, 0), forcedCompact: true) }
+                ForEach(0..<containers.count, id: \.self) { Companion(store: store, forced: (scheme == .dark, $0), forcedCompact: false) }
+                Companion(store: store, forced: (scheme == .dark, 0), forcedCompact: true)
             }
             .padding(16).background(scheme == .dark ? Color(white: 0.05) : Color(white: 0.86)).environment(\.colorScheme, scheme)
         }

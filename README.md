@@ -4,7 +4,7 @@ A small pixel water drop that lives on your Mac and shows how much water your AI
 
 ![Tracky at each heat level, awake in light mode and asleep in dark mode, with sample usage in the legend](docs/preview.png)
 
-- **On the desktop:** a card you can drag anywhere. Tracky sleeps when no AI is working and paces and hops while one is. Double-click the card (or use the menu) to switch between the complete card and a minimal one with just Tracky and the total.
+- **On the desktop:** a card you can drag anywhere. Tracky sleeps when no AI is working and paces and hops while one is. Double-click the card (or use the menu) to switch between the complete card and a minimal one with just Tracky, the total and the model that used the most.
 - **It heats up as you use more water.** A bar fills toward the next container, and each container you pass makes Tracky hotter:
 
   | Container | Liters | Tracky |
@@ -17,8 +17,8 @@ A small pixel water drop that lives on your Mac and shows how much water your AI
   | bathtub | 150 | overheated, red |
 
 - **Where the water comes from:** a second bar splits the total by model and source, such as *Opus 5.5 · Code*, *GPT 5.2 · ChatGPT* or *Google AI Overview*, with a legend of at most five lines. With more than five, the four largest stay and the rest are summed as *Other*. The menu shows the same lines.
-- **Tips in a speech bubble,** about what you used last: the next lighter model in the same family (*Try Sonnet 5.5: ~3× less water* after Opus), your coding agent's effort (*45% thinking: try lower effort*), or, after a Google search with an AI answer, *Use Google's Web tab: no AI answer*.
-- **🔥 Roast me:** click the flame and Tracky gets angry, listing what the same water could have been: espressos, cups of tea, seconds of shower, toilet flushes, tomatoes grown (a global average of [214 L per kg](https://www.enel.com/learning-hub/environment/water-footprint), Hoekstra & Chapagain 2007). Close it with ✕. On the minimal card, the flame just makes Tracky angry for a moment.
+- **Tips in a speech bubble,** about what you used last: the next lighter model in the same family (*Try Sonnet 5.5: ~3× less water* after Opus), your coding agent's effort (*45% thinking: try lower effort*), or, after a Google search with an AI answer, *Try Google's Web tab: no AI*.
+- **🔥 Roast me:** click the flame under the globe and Tracky gets angry, listing what the same water could have been: espressos, cups of tea, seconds of shower, toilet flushes, tomatoes grown (a global average of [214 L per kg](https://www.enel.com/learning-hub/environment/water-footprint), Hoekstra & Chapagain 2007). Close it with ✕. It's on the complete card only.
 - **Browser tracking, at a glance:** a globe in the card's corner with a red dot when it's off and a green one when it's on. Click it to set it up in two steps (on the minimal card the globe only shows the status).
 - **Menu bar:** the drop and the total. Click it for the same breakdown, a tip, the period (last 1, 5 or 24 hours), switches for the minimal card, to hide the card and to open Tracky at login (on by default), and *How is this estimated?*, which opens the EcoLogits method Tracky implements.
 
