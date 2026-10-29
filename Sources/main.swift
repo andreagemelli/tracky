@@ -16,6 +16,8 @@ final class Store: ObservableObject {
     @Published var browserOn = ChromeLink.on
     @Published var chromeConnected = ChromeLink.connected
     @Published var showSetup = false
+    @Published var roasting = false
+    @Published var angryUntil = Date.distantPast
     func refreshLink() { browserOn = ChromeLink.on; chromeConnected = ChromeLink.connected }
     @Published var compact = UserDefaults.standard.bool(forKey: "compact") {
         didSet { UserDefaults.standard.set(compact, forKey: "compact") }
@@ -95,15 +97,17 @@ func container(for l: Double) -> (name: String, sprite: [String], fill: Double, 
 }
 
 let sliceColors = [Color(red: 0.33, green: 0.62, blue: 0.96), Color(red: 0.2, green: 0.74, blue: 0.62),
-                   Color(red: 0.98, green: 0.6, blue: 0.24), Color(red: 0.64, green: 0.5, blue: 0.93)]
+                   Color(red: 0.98, green: 0.6, blue: 0.24), Color(red: 0.64, green: 0.5, blue: 0.93),
+                   Color(red: 0.94, green: 0.45, blue: 0.62)]
 
-/// The four heaviest contributions, the rest as "Other", each with its color in the bar and legend.
+/// At most five lines for the bar, the legend and the menu: all of them if they fit, else the four
+/// heaviest and "Other" summing the rest.
 func slices(_ s: Store) -> [(label: String, liters: Double, color: Color)] {
-    let all = s.bySource
-    var out = all.prefix(sliceColors.count).enumerated().map { ($1.label, $1.water.mid, sliceColors[$0]) }
-    let rest = all.dropFirst(sliceColors.count).reduce(0) { $0 + $1.water.mid }
-    if rest > 0 { out.append(("Other", rest, .gray)) }
-    return out.filter { $0.1 > 0 }
+    let all = s.bySource.filter { $0.water.mid > 0 }
+    let named = all.count <= 5 ? all[...] : all.prefix(4)
+    var out = named.enumerated().map { ($1.label, $1.water.mid, sliceColors[$0]) }
+    if all.count > 5 { out.append(("Other", all.dropFirst(4).reduce(0) { $0 + $1.water.mid }, .gray)) }
+    return out
 }
 
 /// The next lighter model of the same family, for "try a smaller model" tips. First match wins.
@@ -142,6 +146,8 @@ func tipsSelfTest() {
     precondition(step("claude-opus-5-5") == "claude-sonnet-5-5" && step("claude-sonnet-4-5-20250929") == "claude-haiku-5-5")
     precondition(step("claude-haiku-5-5") == nil, "Haiku is the lightest Claude")
     precondition(step("gpt-5.2") == "gpt-5-mini" && step("gpt-5-mini") == "gpt-5-nano")
+    precondition(roastLine(roastItems[1], 4.41) == "17 cups of tea" && roastLine(roastItems[3], 6) == "1 toilet flush")
+    precondition(roastLine(roastItems[3], 9) == "1.5 toilet flushes" && roastLine(roastItems[4], 4.41) == "20% of a tomato, grown")
     print("tips selftest ok")
 }
 
@@ -153,6 +159,9 @@ enum Sprites {
         "     ##     ", "    ####    ", "   ######   ", "  ########  ", " ########## ", " ##e####e## ",
         "###e####e###", "##b######b##", "#####mm#####", " %%%%%%%%%% ", "  %%%%%%%%  ",
     ]
+    static let angry = awake.enumerated().map { i, r in   // thick brows, red cheeks, a frown
+        i == 4 ? " #ee####ee# " : i == 7 ? "#bb######bb#" : i == 8 ? "####mmmm####" : r
+    }
     static let asleep = awake.enumerated().map { i, r in
         i == 5 ? " ########## " : i == 6 ? "##ee####ee##" : r
     }
@@ -207,6 +216,7 @@ func draw(_ rows: [String], in ctx: GraphicsContext, at o: CGPoint, px: CGFloat,
 /// Heat (0–5, one per container passed) layers on top: blush, sweat, flushed cheeks and panting, steam, then a red body.
 struct Scene: View {
     let asleep: Bool, heat: Int, tick: Int, tip: String?
+    var angry = false   // roasting: red, shaking and steaming whatever the heat
     var height: CGFloat = 100
     @Environment(\.colorScheme) var scheme
 
@@ -215,19 +225,20 @@ struct Scene: View {
     }
 
     private func render(_ ctx: GraphicsContext, _ size: CGSize) {
-        let p = Palette(scheme: scheme, warmth: heat >= 5 ? 0.75 : 0)   // blue until overheated: a blue–red blend reads as purple
+        let p = Palette(scheme: scheme, warmth: heat >= 5 || angry ? 0.75 : 0)   // blue until overheated: a blue–red blend reads as purple
         let px: CGFloat = 4, groundY = size.height - 4, w = 12 * px, h = 11 * px
         ctx.fill(Path(CGRect(x: 0, y: groundY, width: size.width, height: 1)), with: .color(p.ground))
 
         let period = 40 - heat * 5   // paces faster as it heats up
         let phase = Double(tick % period) / Double(period)
-        let x = asleep ? (size.width - w) / 2 : 12 + (size.width - w - 24) * (0.5 - 0.5 * cos(phase * 2 * .pi))
-        let y = groundY - h - (!asleep && tick % 2 == 0 ? 3 : 0)
+        let x = angry ? (size.width - w) / 2 + (tick % 2 == 0 ? -2 : 2)
+            : asleep ? (size.width - w) / 2 : 12 + (size.width - w - 24) * (0.5 - 0.5 * cos(phase * 2 * .pi))
+        let y = groundY - h - (!asleep && !angry && tick % 2 == 0 ? 3 : 0)
         func dot(_ dx: CGFloat, _ dy: CGFloat, _ c: Color, _ s: CGFloat = 3, _ t: CGFloat = 3) {
             ctx.fill(Path(CGRect(x: x + dx, y: y + dy, width: s, height: t)), with: .color(c))
         }
 
-        var rows = asleep ? Sprites.asleep : Sprites.awake
+        var rows = angry ? Sprites.angry : asleep ? Sprites.asleep : Sprites.awake
         if heat == 0 { rows = rows.map { $0.replacingOccurrences(of: "b", with: "#") } }   // cool: no blush yet
         if heat >= 3 { rows[7] = "#bb######bb#" }                                            // hot: flushed cheeks
         draw(rows, in: ctx, at: CGPoint(x: x, y: y), px: px, ink: p.water, p)
@@ -235,11 +246,11 @@ struct Scene: View {
 
         let sweat: [(CGFloat, CGFloat)] = [(-5, 14), (w + 2, 8), (-6, 2), (w + 3, 22)]
         for (sx, sy) in sweat.prefix(max(heat - 1, 0)) { dot(sx, sy + CGFloat(tick % 3) * 2, Color(red: 0.45, green: 0.75, blue: 1), 3, 5) }
-        if heat >= 4 {
+        if heat >= 4 || angry {
             for i in 0..<3 { dot(w / 2 - 12 + CGFloat(i) * 10, -6 - CGFloat((tick + i * 3) % 9) * 2, p.ground.opacity(0.8)) }
         }
 
-        if !asleep {   // dust kicks up behind it
+        if !asleep && !angry {   // dust kicks up behind it
             let back: CGFloat = sin(phase * 2 * .pi) > 0 ? -1 : 1
             ctx.fill(Path(CGRect(x: back < 0 ? x - 6 : x + w + 2, y: groundY - 3 - CGFloat(tick % 2) * 3, width: 3, height: 3)),
                      with: .color(p.ground))
@@ -283,14 +294,17 @@ struct Companion: View {
         let p = Palette(scheme: scheme), total = store.total.mid
         let c = forced.map { (containers[$0.heat].name, containers[$0.heat].sprite, 0.6, $0.heat) } ?? container(for: total)
         let tipList = tips(store), secs = tick / 4, compact = forcedCompact ?? store.compact
-        let tip = secs % 24 < 8 ? tipList[(secs / 24) % tipList.count] : nil   // speaks for 8 s every 24 s
+        let roasting = store.roasting && !compact, angry = roasting || store.angryUntil > Date()
+        let tip = roasting ? roastShouts[(secs / 3) % roastShouts.count]
+            : secs % 24 < 8 ? tipList[(secs / 24) % tipList.count] : nil   // speaks for 8 s every 24 s
         VStack(alignment: .leading, spacing: 10) {
-            Scene(asleep: forced?.asleep ?? !store.active, heat: c.3, tick: tick, tip: compact ? nil : tip, height: compact ? 64 : 100)
-            if store.showSetup && !compact { BrowserSetup(store: store) }
+            Scene(asleep: (forced?.asleep ?? !store.active) && !angry, heat: c.3, tick: tick, tip: compact ? nil : tip,
+                  angry: angry, height: compact ? 64 : 100)
+            if roasting { RoastView(store: store) } else if store.showSetup && !compact { BrowserSetup(store: store) }
             if compact {   // minimal: just Tracky and the total
                 Text("≈ " + fmt(total)).font(.system(size: 15, weight: .bold)).monospacedDigit()
                     .frame(maxWidth: .infinity)
-            } else {
+            } else if !roasting {
                 HStack(alignment: .firstTextBaseline) {
                     Text("Water").font(.system(size: 14, weight: .semibold))
                     Text("last \(Int(store.hours))h").font(.system(size: 12)).foregroundStyle(.secondary)
@@ -351,18 +365,73 @@ struct Companion: View {
                 w.setFrameOrigin(NSPoint(x: s.origin.x + m.x - s.mouse.x, y: s.origin.y + m.y - s.mouse.y))
             }
             .onEnded { _ in dragStart = nil })
-        .overlay(alignment: .topTrailing) {   // browser tracking status: red off, green on
-            Button { store.compact = false; store.showSetup.toggle() } label: {
-                Image(systemName: "globe").font(.system(size: 12)).foregroundStyle(.secondary)
+        .overlay(alignment: .topTrailing) {
+            HStack(spacing: 0) {
+                // Roast: the full card swaps to funny equivalents; the minimal one just gets angry for a moment.
+                Button {
+                    if compact { store.angryUntil = Date().addingTimeInterval(3) } else { store.showSetup = false; store.roasting.toggle() }
+                } label: {
+                    Image(systemName: "flame.fill").font(.system(size: 12)).foregroundStyle(.orange).padding(.vertical, 10).padding(.leading, 10)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help("Roast me")
+                // Browser tracking status: red off, green on. Only the full card opens the setup.
+                let globe = Image(systemName: "globe").font(.system(size: 12)).foregroundStyle(.secondary)
                     .overlay(alignment: .bottomTrailing) {
                         Circle().fill(store.browserOn ? Color.green : Color.red).frame(width: 6, height: 6).offset(x: 2, y: 2)
                     }
                     .padding(10).contentShape(Rectangle())
+                if compact {
+                    globe.help(store.browserOn ? "Browser tracking is on" : "Browser tracking is off")
+                } else {
+                    Button { store.roasting = false; store.showSetup.toggle() } label: { globe }
+                        .buttonStyle(.plain)
+                        .help(store.browserOn ? "Browser tracking is on" : "Browser tracking is off · click to set up")
+                }
             }
-            .buttonStyle(.plain)
-            .help(store.browserOn ? "Browser tracking is on" : "Browser tracking is off · click to set up")
         }
         .onReceive(timer) { _ in if forced == nil { tick += 1 } }
+    }
+}
+
+let roastShouts = ["Seriously?!", "I'm boiling!", "All that for this?!"]
+
+/// What the same water could have been. Sizes are everyday amounts; the shower uses 2.1 gal/min
+/// (home-water-works.org) and the tomato a global average of 214 L per kg (Hoekstra & Chapagain 2007), at ~100 g each.
+let roastItems: [(emoji: String, liters: Double, one: String, many: String)] = [
+    ("☕️", 0.03, "espresso", "espressos"),
+    ("🫖", 0.25, "cup of tea", "cups of tea"),
+    ("🚿", 7.95 / 60, "second of shower", "seconds of shower"),
+    ("🚽", 6, "toilet flush", "toilet flushes"),
+    ("🍅", 21.4, "tomato, grown", "tomatoes, grown"),
+]
+
+func roastLine(_ item: (emoji: String, liters: Double, one: String, many: String), _ total: Double) -> String {
+    let n = total / item.liters
+    return n >= 10 ? "\(Int(n)) \(item.many)" : n >= 1.05 ? String(format: "%.1f %@", n, item.many)
+        : n >= 0.95 ? "1 \(item.one)" : "\(max(Int(n * 100), 1))% of a \(item.one)"
+}
+
+/// The roast: Tracky is furious and lists what your AI water could have been instead.
+struct RoastView: View {
+    @ObservedObject var store: Store
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            HStack {
+                Text("≈ \(fmt(store.total.mid)) could have been…").font(.system(size: 13, weight: .semibold))
+                Spacer()
+                Button { store.roasting = false } label: { Image(systemName: "xmark").font(.system(size: 10, weight: .bold)) }
+                    .buttonStyle(.plain).foregroundStyle(.secondary)
+            }
+            ForEach(roastItems.indices, id: \.self) { i in
+                HStack(spacing: 8) {
+                    Text(roastItems[i].emoji)
+                    Text(roastLine(roastItems[i], store.total.mid)).font(.system(size: 12))
+                }
+            }
+        }
     }
 }
 
@@ -471,8 +540,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     func menuNeedsUpdate(_ menu: NSMenu) {
         menu.removeAllItems()
         menu.addItem(row("Water · last \(Int(store.hours))h", "≈ " + fmt(store.total.mid), bold: true))
-        for m in store.bySource.prefix(5) { menu.addItem(row(m.label, fmt(m.water.mid))) }
-        if store.bySource.isEmpty { menu.addItem(row("No AI activity yet", "")) }
+        for slice in slices(store) { menu.addItem(row(slice.label, fmt(slice.liters))) }
+        if slices(store).isEmpty { menu.addItem(row("No AI activity yet", "")) }
         menu.addItem(.separator())
         menu.addItem(row("💡 " + tips(store)[0], ""))
         menu.addItem(.separator())
@@ -570,11 +639,14 @@ if let i = args.firstIndex(of: "--preview"), i + 1 < args.count {   // render ev
     let samples = [#"{"site":"claude.ai","model":"claude-sonnet-5-5","tokens":4000}"#, #"{"site":"chatgpt.com","model":"gpt-5-2","tokens":3000}"#]
         + Array(repeating: #"{"site":"google-ai-overview"}"#, count: 40)
     store.showSetup = args.contains("--setup")
+    store.roasting = args.contains("--roast")
+    if store.roasting { store.angryUntil = .distantFuture }   // so the minimal cards show the angry gimmick too
     store.usages = store.load() + samples.compactMap { BrowserEvent(json: Data($0.utf8))?.usage(at: Date(), catalog: catalog) }
     let sheet = VStack(spacing: 16) {
         ForEach([ColorScheme.light, .dark], id: \.self) { scheme in
             HStack(alignment: .top, spacing: 16) {   // light: awake at each heat level; dark: asleep
                 ForEach(0..<containers.count, id: \.self) { Companion(store: store, forced: (scheme == .dark, $0)) }
+                if store.roasting { Companion(store: store, forced: (false, 0), forcedCompact: true) }
             }
             .padding(16).background(scheme == .dark ? Color(white: 0.05) : Color(white: 0.86)).environment(\.colorScheme, scheme)
         }

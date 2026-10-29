@@ -16,9 +16,10 @@ A small pixel water drop that lives on your Mac and shows how much water your AI
   | shower | 60 ([average US shower, 15.8 gal](https://home-water-works.org/indoor-use/showers)) | steaming |
   | bathtub | 150 | overheated, red |
 
-- **Where the water comes from:** a second bar splits the total by model and source, such as *Opus 5.5 · Code*, *GPT 5.2 · ChatGPT* or *Google AI Overview*, with a legend. The four largest get a color; the rest are grouped as *Other*.
+- **Where the water comes from:** a second bar splits the total by model and source, such as *Opus 5.5 · Code*, *GPT 5.2 · ChatGPT* or *Google AI Overview*, with a legend of at most five lines. With more than five, the four largest stay and the rest are summed as *Other*. The menu shows the same lines.
 - **Tips in a speech bubble,** about what you used last: the next lighter model in the same family (*Try Sonnet 5.5: ~3× less water* after Opus), your coding agent's effort (*45% thinking: try lower effort*), or, after a Google search with an AI answer, *Use Google's Web tab: no AI answer*.
-- **Browser tracking, at a glance:** a globe in the card's corner with a red dot when it's off and a green one when it's on. Click it to set it up in two steps.
+- **🔥 Roast me:** click the flame and Tracky gets angry, listing what the same water could have been: espressos, cups of tea, seconds of shower, toilet flushes, tomatoes grown (a global average of [214 L per kg](https://www.enel.com/learning-hub/environment/water-footprint), Hoekstra & Chapagain 2007). Close it with ✕. On the minimal card, the flame just makes Tracky angry for a moment.
+- **Browser tracking, at a glance:** a globe in the card's corner with a red dot when it's off and a green one when it's on. Click it to set it up in two steps (on the minimal card the globe only shows the status).
 - **Menu bar:** the drop and the total. Click it for the same breakdown, a tip, the period (last 1, 5 or 24 hours), switches for the minimal card, to hide the card and to open Tracky at login (on by default), and *How is this estimated?*, which opens the EcoLogits method Tracky implements.
 
 Everything stays on your Mac. Tracky records only which model ran, when, and how many tokens it produced. It never stores prompts or replies, needs no macOS permissions and makes no network calls.
