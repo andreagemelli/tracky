@@ -100,16 +100,16 @@ func lighter(than m: Model) -> Model? {
 
 /// Tips about what was used last: a lighter model, lower effort, skipping Google's AI answers.
 /// Kept under ~32 characters so they fit Tracky's speech bubble on one line.
-func tips(_ s: Store) -> [String] {
+func tips(_ s: Store, _ metric: Metric) -> [String] {
     var out: [String] = []
     if let last = s.usages.max(by: { $0.date < $1.date }) {
         if last.source == "Search" {
-            out += ["Try Google's Web tab: no AI", "AI Mode follow-ups cost \(s.metric.noun)"]
+            out += ["Try Google's Web tab: no AI", "AI Mode follow-ups cost \(metric.noun)"]
         }
         if let alt = lighter(than: last.model) {
-            let one = { (m: Model) in s.metric.of(EcoLogits.impact(m, outputTokens: 1000)).mid }
+            let one = { (m: Model) in metric.of(EcoLogits.impact(m, outputTokens: 1000)).mid }
             let ratio = one(last.model) / one(alt)
-            if ratio >= 1.5 { out.append("Try \(pretty(alt.name)): ~\(Int(ratio.rounded()))× less \(s.metric.noun)") }
+            if ratio >= 1.5 { out.append("Try \(pretty(alt.name)): ~\(Int(ratio.rounded()))× less \(metric.noun)") }
         }
         if let effort = last.effort, ["max", "xhigh", "high"].contains(effort) {
             let code = s.recent.filter { $0.source == "Code" }
@@ -118,7 +118,7 @@ func tips(_ s: Store) -> [String] {
                                                                : "Effort \(effort): try lower")
         }
     }
-    out.append("Shorter answers, less \(s.metric.noun)")
+    out.append("Shorter answers, less \(metric.noun)")
     return out
 }
 
@@ -284,7 +284,7 @@ struct Companion: View {
         let metric = forcedMetric ?? store.metric, impact = store.impact, total = metric.of(impact).mid
         let p = Palette(scheme: scheme, metric: metric)
         let c = forced.map { (rung: metric.ladder[$0.heat], fill: 0.6, level: $0.heat) } ?? rung(for: total, metric)
-        let tipList = tips(store), secs = tick / 4, compact = forcedCompact ?? store.compact
+        let tipList = tips(store, metric), secs = tick / 4, compact = forcedCompact ?? store.compact
         let roasting = store.roasting && !compact, angry = roasting
         let tip = roasting ? metric.shouts[(secs / 3) % metric.shouts.count]
             : secs % 24 < 8 ? tipList[(secs / 24) % tipList.count] : nil   // speaks for 8 s every 24 s
@@ -546,7 +546,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         for slice in slices(store, m) { menu.addItem(row(slice.label, m.fmt(slice.amount))) }
         if slices(store, m).isEmpty { menu.addItem(row("No AI activity yet", "")) }
         menu.addItem(.separator())
-        menu.addItem(row("💡 " + tips(store)[0], ""))
+        menu.addItem(row("💡 " + tips(store, m)[0], ""))
         menu.addItem(.separator())
 
         let browser = NSMenuItem(title: store.browserOn ? "Browser tracking: on" : "Browser tracking: off · Set up…",
@@ -647,32 +647,36 @@ if args.contains("--dump") {   // what Tracky sees in the last 24 h
     }
     exit(0)
 }
-if let i = args.firstIndex(of: "--preview"), i + 1 < args.count {   // render each metric's Tracky, awake (light) and asleep (dark), to a PNG
-    let store = Store()
-    // Real usage plus a few sample browser events, so the legend shows every kind of source.
+if let i = args.firstIndex(of: "--shots"), i + 1 < args.count {   // render the README screenshots into a folder
+    let dir = URL(fileURLWithPath: args[i + 1]), store = Store()
+    // Real usage plus a few sample browser events from half an hour ago, so the legend shows every kind of source.
     let samples = [#"{"site":"claude.ai","model":"claude-sonnet-5-5","tokens":4000}"#, #"{"site":"chatgpt.com","model":"gpt-5-2","tokens":3000}"#]
         + Array(repeating: #"{"site":"google-ai-overview"}"#, count: 40)
-    store.showSetup = args.contains("--setup")
-    store.roasting = args.contains("--roast")
-    store.usages = store.load() + samples.compactMap { BrowserEvent(json: Data($0.utf8))?.usage(at: Date(), catalog: catalog) }
-    let sheet = VStack(spacing: 16) {
-        ForEach([ColorScheme.light, .dark], id: \.self) { scheme in
-            HStack(alignment: .top, spacing: 16) {   // light: awake; dark: asleep. Each metric at a cool, hot and overheated level.
-                ForEach(Metric.allCases, id: \.self) { m in
-                    ForEach([0, 3, 5], id: \.self) { Companion(store: store, forced: (scheme == .dark, $0), forcedCompact: false, forcedMetric: m) }
-                }
-                Companion(store: store, forced: (scheme == .dark, 0), forcedCompact: true)
-            }
-            .padding(16).background(scheme == .dark ? Color(white: 0.05) : Color(white: 0.86)).environment(\.colorScheme, scheme)
+    store.usages = store.load() + samples.compactMap { BrowserEvent(json: Data($0.utf8))?.usage(at: Date().addingTimeInterval(-1800), catalog: catalog) }
+
+    func card(_ m: Metric, _ heat: Int, asleep: Bool = false, compact: Bool = false) -> Companion {
+        Companion(store: store, forced: (asleep, heat), forcedCompact: compact, forcedMetric: m)
+    }
+    func shot(_ name: String, dark: Bool = false, @ViewBuilder _ content: () -> some View) {
+        let view = HStack(alignment: .top, spacing: 20) { content() }
+            .padding(24).background(dark ? Color(white: 0.08) : Color(white: 0.9)).environment(\.colorScheme, dark ? .dark : .light)
+        let png = MainActor.assumeIsolated { () -> Data? in   // top-level code runs on the main thread
+            let r = ImageRenderer(content: view)
+            r.scale = 2
+            return r.nsImage?.tiffRepresentation.flatMap { NSBitmapImageRep(data: $0)?.representation(using: .png, properties: [:]) }
         }
+        try? png?.write(to: dir.appendingPathComponent(name + ".png"))
     }
-    let png = MainActor.assumeIsolated { () -> Data? in   // top-level code runs on the main thread
-        let r = ImageRenderer(content: sheet)
-        r.scale = 2
-        return r.nsImage?.tiffRepresentation.flatMap { NSBitmapImageRep(data: $0)?.representation(using: .png, properties: [:]) }
-    }
-    guard let png else { exit(1) }
-    try png.write(to: URL(fileURLWithPath: args[i + 1]))
+    try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    shot("hero") { card(.water, 1); card(.energy, 3); card(.co2, 5) }
+    shot("heat") { ForEach(0..<6, id: \.self) { card(.water, $0, compact: true) } }
+    shot("minimal", dark: true) { card(.water, 0, asleep: true, compact: true); card(.energy, 2, compact: true); card(.co2, 4, compact: true) }
+    store.roasting = true
+    shot("roast") { card(.water, 2) }
+    store.roasting = false
+    store.showSetup = true
+    (store.browserOn, store.chromeConnected) = (false, false)   // show the two setup steps
+    shot("browser", dark: true) { card(.water, 0) }
     exit(0)
 }
 

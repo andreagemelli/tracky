@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Tracky",
-  "version": "0.2",
+  "version": "1.0",
   "description": "Tells the Tracky Mac app when an AI reply finishes: site, model and approximate tokens. Never the text.",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAnEJmSqdkzL52ef2fRFdp8pJ0ELsBMdDI5m2lKhSxchq/Xw65T96Wyij8+2qViqAjIH/2Cy7vDajjALSegiq0ws4xQbeXybBehUCRVlvKSqkOFkt5/zlCRFkEr/Lsu3qFIyI7+zG1CiIbUXToyKhADwiuOKMLlfryVp5z4NCGr2aoNpLpLOqqjUu0nQEIxnfwF13i6qIIlATW+OnIcpqjoGUbahTKQf3bKBTSHiqJr7J3uCr/2WrAGVKLgl+GOFpOUpvm56czv9BEFTEZJtwnsVwL92sQ62d4vpezX//NKN7gCP5tfihu+2MlY49q4r7x119x7NJn8owDQQbYhzFHqQIDAQAB",
   "permissions": [
