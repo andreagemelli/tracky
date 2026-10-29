@@ -21,8 +21,18 @@ const SITES = {
     },
   },
   "chatgpt.com": {
-    replies: '[data-message-author-role="assistant"]',
-    model: (el) => el.dataset.messageModelSlug || null,
+    // 2026 markup is data-message-role; the older data-message-author-role is kept as a fallback.
+    replies: '[data-message-role="assistant"], [data-message-author-role="assistant"]',
+    text: (el) => (el.querySelector("[data-assistant-markdown-root]") ?? el).textContent,
+    // Logged-out pages show no model; logged in, look for one on the reply or in the picker ("GPT-5.2").
+    model: (el) => {
+      if (el.dataset.messageModelSlug) return el.dataset.messageModelSlug;
+      for (const b of document.querySelectorAll("button")) {
+        const m = b.textContent.match(/\bGPT[- ]?(\d+(?:\.\d+)?)(?:[- ](mini|nano))?/i);
+        if (m) return ["gpt", m[1], m[2]].filter(Boolean).join("-").toLowerCase();
+      }
+      return null;
+    },
   },
   "gemini.google.com": {
     replies: "model-response",
@@ -40,7 +50,7 @@ function watchReplies(site, cfg) {
   let first = true;
   setInterval(() => {
     for (const el of document.querySelectorAll(cfg.replies)) {
-      const len = el.textContent.length;
+      const len = (cfg.text ? cfg.text(el) : el.textContent).length;
       const s = seen.get(el);
       if (!s) {
         // Present on the first poll = history; new but non-empty is fine, it can still grow.
@@ -57,20 +67,26 @@ function watchReplies(site, cfg) {
   }, POLL_MS);
 }
 
-// Google search: one AI Overview (or AI Mode answer) per results page. Labels are localized.
-const OVERVIEW = /^(AI Overview|AI Mode|Panoramica AI|Modalità AI|Aperçu IA|Mode IA|Übersicht mit KI|KI-Modus|Resumen de IA|Modo IA|Visão geral criada por IA)$/;
+// Google search: every AI answer is one prompt. An AI Overview has a heading of its own, and each
+// AI Mode answer (including follow-ups and "dive deeper" from an overview) has a heading like
+// "AI Mode reply for …". A page can show an overview and its first reply heading together, so a
+// page counts the larger of the two. Labels are localized: English and Italian are checked against
+// google.com (Oct 2026), the others are best guesses.
+const OVERVIEW = /^(AI Overview|Overview dell'AI|Aperçu IA|Übersicht mit KI|Resumen de IA|Visão geral criada por IA)$/;
+const REPLY = /^(AI Mode reply for|Risposta di AI Mode per|Réponse du mode IA pour|Antwort im KI-Modus für|Respuesta del Modo IA para)\b/;
 
 function watchSearch() {
-  let reportedFor = null;
+  let counted = 0;
   setInterval(() => {
-    if (reportedFor === location.href) return;
+    let overview = 0, replies = 0;
     for (const h of document.querySelectorAll("h1, h2, h3, [role=heading]")) {
-      if (OVERVIEW.test(h.textContent.trim())) {
-        report({ site: "google-ai-overview", model: null, tokens: 0 });
-        reportedFor = location.href;
-        return;
-      }
+      const t = h.textContent.trim();
+      if (OVERVIEW.test(t)) overview = 1;
+      else if (REPLY.test(t)) replies++;
     }
+    const answers = Math.max(overview, replies);
+    for (; counted < answers; counted++) report({ site: "google-ai-overview", model: null, tokens: 0 });
+    counted = answers;   // a new results page in place starts over
   }, POLL_MS);
 }
 

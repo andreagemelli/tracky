@@ -4,7 +4,7 @@ A small pixel water drop that lives on your Mac and shows how much water your AI
 
 ![Tracky at each heat level, awake in light mode and asleep in dark mode, with sample browser usage in the legend](docs/preview.png)
 
-- **On the desktop:** a card you can drag anywhere. Tracky sleeps when Claude is idle and paces and hops while it works.
+- **On the desktop:** a card you can drag anywhere. Tracky sleeps when no AI is working and paces and hops while one is. Double-click the card (or use the menu) to switch between the complete card and a minimal one with just Tracky and the total.
 - **It heats up as you use more water.** A bar fills toward the next container, and each container you pass makes Tracky hotter:
 
   | Container | Liters | Tracky |
@@ -17,8 +17,8 @@ A small pixel water drop that lives on your Mac and shows how much water your AI
   | bathtub | 150 | overheated, red |
 
 - **Where the water comes from:** a second bar splits the total by model and source, such as *Opus 5.5 · Code* or *Sonnet 5.5 · claude.ai*, with a legend. The four largest get a color; the rest are grouped as *Other*.
-- **Tips in a speech bubble:** every 24 seconds Tracky says one, such as *Try Haiku: ~42× less water* or *Try lower effort: 45% is thinking*.
-- **Menu bar:** the drop and the total. Click it for the same breakdown, a tip, the period (last 1, 5 or 24 hours), switches to hide the card and to open Tracky at login (on by default), and *How is this estimated?*, which opens the EcoLogits method Tracky implements.
+- **Tips in a speech bubble,** about what you used last: the next lighter model in the same family (*Try Sonnet 5.5: ~3× less water* after Opus, *Try Haiku 5.5* after Sonnet), your Claude Code effort (*45% thinking: try lower effort*), or, after a Google search with an AI answer, *Skip AI Overviews: add &udm=14*.
+- **Menu bar:** the drop and the total. Click it for the same breakdown, a tip, the period (last 1, 5 or 24 hours), switches for the minimal card, to hide the card and to open Tracky at login (on by default), and *How is this estimated?*, which opens the EcoLogits method Tracky implements.
 
 Everything stays on your Mac. Tracky records only which model ran, when, and how many tokens it produced. It never stores prompts or replies, needs no macOS permissions and makes no network calls.
 
@@ -57,7 +57,7 @@ build/Tracky.app/Contents/MacOS/Tracky --preview docs/preview.png
 | claude.ai | read from the model picker (Sonnet 5.5 if not found) | EcoLogits |
 | chatgpt.com | read from the reply (GPT-5 if not found) | EcoLogits |
 | gemini.google.com | not read | Google's measured 0.26 mL per prompt |
-| Google search, AI Overviews and AI Mode | not read | Google's measured 0.26 mL per prompt |
+| Google search: each AI Overview and AI Mode answer, follow-ups included | not read | Google's measured 0.26 mL per prompt |
 
 Browser counts are estimates: tokens are guessed from reply length (about 4 characters per token), and a reply counts only once Tracky has seen it stream in. Replies already on the page, such as an old chat you open, are never counted.
 

@@ -13,6 +13,9 @@ let catalog = Catalog(url: Bundle.main.url(forResource: "models", withExtension:
 
 final class Store: ObservableObject {
     @Published var usages: [Usage] = []
+    @Published var compact = UserDefaults.standard.bool(forKey: "compact") {
+        didSet { UserDefaults.standard.set(compact, forKey: "compact") }
+    }
     @Published var hours: Double = UserDefaults.standard.object(forKey: "hours") as? Double ?? 5 {
         didSet { UserDefaults.standard.set(hours, forKey: "hours") }
     }
@@ -99,17 +102,43 @@ func slices(_ s: Store) -> [(label: String, liters: Double, color: Color)] {
     return out.filter { $0.1 > 0 }
 }
 
+/// The next lighter model of the same family, for "try a smaller model" tips. First match wins.
+func lighter(than m: Model) -> Model? {
+    let steps = [("claude-fable", "claude-opus-5-5"), ("claude-opus", "claude-sonnet-5-5"), ("claude-sonnet", "claude-haiku-5-5"),
+                 ("gpt-5-mini", "gpt-5-nano"), ("gpt-5", "gpt-5-mini")]
+    guard let alt = steps.first(where: { m.name.hasPrefix($0.0) }).flatMap({ catalog[$0.1] }), alt.name != m.name else { return nil }
+    return alt
+}
+
+/// Tips about what was used last: a lighter model, lower effort, skipping Google's AI answers.
+/// Kept under ~32 characters so they fit Tracky's speech bubble on one line.
 func tips(_ s: Store) -> [String] {
     var out: [String] = []
-    if let top = s.byModel.first, top.model.provider == "anthropic", let haiku = catalog["claude-haiku-5-5"], top.model.name != haiku.name {
-        let ratio = EcoLogits.water(top.model, outputTokens: 1000).mid / EcoLogits.water(haiku, outputTokens: 1000).mid
-        if ratio >= 2 { out.append("Try Haiku: ~\(Int(ratio))× less water") }
+    if let last = s.usages.max(by: { $0.date < $1.date }) {
+        if last.source == "Search" {
+            out += ["Skip AI Overviews: add &udm=14", "AI Mode follow-ups cost water"]
+        }
+        if let alt = lighter(than: last.model) {
+            let ratio = EcoLogits.water(last.model, outputTokens: 1000).mid / EcoLogits.water(alt, outputTokens: 1000).mid
+            if ratio >= 1.5 { out.append("Try \(pretty(alt.name)): ~\(Int(ratio.rounded()))× less water") }
+        }
+        if let effort = last.effort, ["max", "xhigh", "high"].contains(effort) {
+            let code = s.recent.filter { $0.source == "Code" }
+            let output = code.reduce(0) { $0 + $1.output }, thinking = code.reduce(0) { $0 + $1.thinking }
+            out.append(output > 0 && thinking * 10 > output * 3 ? "\(thinking * 100 / output)% thinking: try lower effort"
+                                                               : "Effort \(effort): try lower")
+        }
     }
-    let output = s.recent.reduce(0) { $0 + $1.output }, thinking = s.recent.reduce(0) { $0 + $1.thinking }
-    if output > 0, thinking * 10 > output * 3 { out.append("Try lower effort: \(thinking * 100 / output)% is thinking") }
     out.append("Shorter answers, less water")
-    out.append("Skip AI Overviews: add &udm=14")
     return out
+}
+
+func tipsSelfTest() {
+    func step(_ from: String) -> String? { catalog[from].flatMap(lighter(than:))?.name }
+    precondition(step("claude-opus-5-5") == "claude-sonnet-5-5" && step("claude-sonnet-4-5-20250929") == "claude-haiku-5-5")
+    precondition(step("claude-haiku-5-5") == nil, "Haiku is the lightest Claude")
+    precondition(step("gpt-5.2") == "gpt-5-mini" && step("gpt-5-mini") == "gpt-5-nano")
+    print("tips selftest ok")
 }
 
 // MARK: - Pixel art
@@ -174,10 +203,11 @@ func draw(_ rows: [String], in ctx: GraphicsContext, at o: CGPoint, px: CGFloat,
 /// Heat (0–5, one per container passed) layers on top: blush, sweat, flushed cheeks and panting, steam, then a red body.
 struct Scene: View {
     let asleep: Bool, heat: Int, tick: Int, tip: String?
+    var height: CGFloat = 100
     @Environment(\.colorScheme) var scheme
 
     var body: some View {
-        Canvas { ctx, size in render(ctx, size) }.frame(height: 100)
+        Canvas { ctx, size in render(ctx, size) }.frame(height: height)
     }
 
     private func render(_ ctx: GraphicsContext, _ size: CGSize) {
@@ -238,6 +268,7 @@ struct Scene: View {
 struct Companion: View {
     @ObservedObject var store: Store
     var forced: (asleep: Bool, heat: Int)? = nil   // for --preview
+    var forcedCompact: Bool? = nil
     @State private var tick = 0
     @Environment(\.colorScheme) var scheme
     private let timer = Timer.publish(every: 0.25, on: .main, in: .common).autoconnect()
@@ -245,56 +276,61 @@ struct Companion: View {
     var body: some View {
         let p = Palette(scheme: scheme), total = store.total.mid
         let c = forced.map { (containers[$0.heat].name, containers[$0.heat].sprite, 0.6, $0.heat) } ?? container(for: total)
-        let tipList = tips(store), secs = tick / 4
+        let tipList = tips(store), secs = tick / 4, compact = forcedCompact ?? store.compact
         let tip = secs % 24 < 8 ? tipList[(secs / 24) % tipList.count] : nil   // speaks for 8 s every 24 s
         VStack(alignment: .leading, spacing: 10) {
-            Scene(asleep: forced?.asleep ?? !store.active, heat: c.3, tick: tick, tip: tip)
-            HStack(alignment: .firstTextBaseline) {
-                Text("Water").font(.system(size: 14, weight: .semibold))
-                Text("last \(Int(store.hours))h").font(.system(size: 12)).foregroundStyle(.secondary)
-                Spacer()
+            Scene(asleep: forced?.asleep ?? !store.active, heat: c.3, tick: tick, tip: compact ? nil : tip, height: compact ? 64 : 100)
+            if compact {   // minimal: just Tracky and the total
                 Text("≈ " + fmt(total)).font(.system(size: 15, weight: .bold)).monospacedDigit()
-            }
-            GeometryReader { g in
-                ZStack(alignment: .leading) {
-                    Capsule().fill(p.track)
-                    Capsule().fill(p.water).frame(width: max(g.size.width * c.2, c.2 > 0 ? 8 : 0))
+                    .frame(maxWidth: .infinity)
+            } else {
+                HStack(alignment: .firstTextBaseline) {
+                    Text("Water").font(.system(size: 14, weight: .semibold))
+                    Text("last \(Int(store.hours))h").font(.system(size: 12)).foregroundStyle(.secondary)
+                    Spacer()
+                    Text("≈ " + fmt(total)).font(.system(size: 15, weight: .bold)).monospacedDigit()
                 }
-            }
-            .frame(height: 8)
-            HStack(spacing: 6) {
-                Canvas { ctx, _ in draw(c.1, in: ctx, at: .zero, px: 2, ink: p.outline, fill: c.2, p) }
-                    .frame(width: CGFloat(c.1.map(\.count).max() ?? 0) * 2, height: CGFloat(c.1.count) * 2)
-                Text("\(Int(c.2 * 100))% of a \(c.0)").font(.system(size: 12)).foregroundStyle(.secondary)
-            }
-            let parts = slices(store), sum = parts.reduce(0) { $0 + $1.liters }
-            if sum > 0 {
-                Divider()
-                GeometryReader { g in   // the whole bar is the total; each slice is one model and source
-                    HStack(spacing: 2) {
-                        ForEach(parts.indices, id: \.self) { i in
-                            Rectangle().fill(parts[i].color)
-                                .frame(width: max((g.size.width - CGFloat(parts.count - 1) * 2) * parts[i].liters / sum, 2))
-                        }
+                GeometryReader { g in
+                    ZStack(alignment: .leading) {
+                        Capsule().fill(p.track)
+                        Capsule().fill(p.water).frame(width: max(g.size.width * c.2, c.2 > 0 ? 8 : 0))
                     }
-                    .clipShape(Capsule())
                 }
                 .frame(height: 8)
-                VStack(alignment: .leading, spacing: 4) {
-                    ForEach(parts.indices, id: \.self) { i in
-                        HStack(spacing: 6) {
-                            RoundedRectangle(cornerRadius: 2).fill(parts[i].color).frame(width: 8, height: 8)
-                            Text(parts[i].label).lineLimit(1)
-                            Spacer()
-                            Text(fmt(parts[i].liters)).monospacedDigit().foregroundStyle(.secondary)
+                HStack(spacing: 6) {
+                    Canvas { ctx, _ in draw(c.1, in: ctx, at: .zero, px: 2, ink: p.outline, fill: c.2, p) }
+                        .frame(width: CGFloat(c.1.map(\.count).max() ?? 0) * 2, height: CGFloat(c.1.count) * 2)
+                    Text("\(Int(c.2 * 100))% of a \(c.0)").font(.system(size: 12)).foregroundStyle(.secondary)
+                }
+                let parts = slices(store), sum = parts.reduce(0) { $0 + $1.liters }
+                if sum > 0 {
+                    Divider()
+                    GeometryReader { g in   // the whole bar is the total; each slice is one model and source
+                        HStack(spacing: 2) {
+                            ForEach(parts.indices, id: \.self) { i in
+                                Rectangle().fill(parts[i].color)
+                                    .frame(width: max((g.size.width - CGFloat(parts.count - 1) * 2) * parts[i].liters / sum, 2))
+                            }
                         }
-                        .font(.system(size: 11))
+                        .clipShape(Capsule())
+                    }
+                    .frame(height: 8)
+                    VStack(alignment: .leading, spacing: 4) {
+                        ForEach(parts.indices, id: \.self) { i in
+                            HStack(spacing: 6) {
+                                RoundedRectangle(cornerRadius: 2).fill(parts[i].color).frame(width: 8, height: 8)
+                                Text(parts[i].label).lineLimit(1)
+                                Spacer()
+                                Text(fmt(parts[i].liters)).monospacedDigit().foregroundStyle(.secondary)
+                            }
+                            .font(.system(size: 11))
+                        }
                     }
                 }
             }
         }
-        .padding(16)
-        .frame(width: 250)
+        .padding(compact ? 12 : 16)
+        .frame(width: compact ? 150 : 250)
         .background(RoundedRectangle(cornerRadius: 18).fill(p.card))
         .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(Color.primary.opacity(0.08)))
         .onReceive(timer) { _ in if forced == nil { tick += 1 } }
@@ -305,8 +341,10 @@ struct Companion: View {
 
 /// Borderless panel dragged from anywhere (SwiftUI content would otherwise swallow the click).
 final class DragPanel: NSPanel {
+    var onDoubleClick: () -> Void = {}
     override func sendEvent(_ event: NSEvent) {
-        if event.type == .leftMouseDown { performDrag(with: event) } else { super.sendEvent(event) }
+        guard event.type == .leftMouseDown else { super.sendEvent(event); return }
+        if event.clickCount == 2 { onDoubleClick() } else { performDrag(with: event) }
     }
 }
 
@@ -328,6 +366,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         panel = DragPanel(contentRect: NSRect(origin: .zero, size: host.fittingSize),
                           styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
         panel.contentView = host
+        panel.onDoubleClick = { [weak self] in self?.store.compact.toggle() }
         panel.isOpaque = false
         panel.backgroundColor = .clear
         panel.hasShadow = true
@@ -377,6 +416,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let show = NSMenuItem(title: "Show on desktop", action: #selector(toggleCompanion), keyEquivalent: "")
         show.target = self; show.state = panel.isVisible ? .on : .off
         menu.addItem(show)
+        let minimal = NSMenuItem(title: "Minimal card", action: #selector(toggleCompact), keyEquivalent: "")
+        minimal.target = self; minimal.state = store.compact ? .on : .off
+        menu.addItem(minimal)
         let login = NSMenuItem(title: "Open at login", action: #selector(toggleLogin), keyEquivalent: "")
         login.target = self; login.state = SMAppService.mainApp.status == .enabled ? .on : .off
         menu.addItem(login)
@@ -404,6 +446,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let s = SMAppService.mainApp
         try? s.status == .enabled ? s.unregister() : s.register()
     }
+    @objc func toggleCompact() { store.compact.toggle() }
     @objc func toggleCompanion() {
         panel.isVisible ? panel.orderOut(nil) : panel.orderFront(nil)
         UserDefaults.standard.set(panel.isVisible, forKey: "showCompanion")
@@ -428,7 +471,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 // MARK: - Entry
 
 let args = CommandLine.arguments
-if args.contains("--selftest") { selfTest(catalog: catalog); browserSelfTest(catalog: catalog); exit(0) }
+if args.contains("--selftest") { selfTest(catalog: catalog); browserSelfTest(catalog: catalog); tipsSelfTest(); exit(0) }
 if args.contains("--dump") {   // what Tracky sees in the last 24 h
     for (name, us) in Dictionary(grouping: Store().load(), by: { $0.model.name }) {
         let w = us.reduce(Liters()) { $0 + $1.water }
@@ -446,6 +489,7 @@ if let i = args.firstIndex(of: "--preview"), i + 1 < args.count {   // render ev
         ForEach([ColorScheme.light, .dark], id: \.self) { scheme in
             HStack(alignment: .top, spacing: 16) {   // light: awake at each heat level; dark: asleep
                 ForEach(0..<containers.count, id: \.self) { Companion(store: store, forced: (scheme == .dark, $0)) }
+                Companion(store: store, forced: (scheme == .dark, 3), forcedCompact: true)
             }
             .padding(16).background(scheme == .dark ? Color(white: 0.05) : Color(white: 0.86)).environment(\.colorScheme, scheme)
         }
