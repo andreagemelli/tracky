@@ -1,10 +1,46 @@
-import Foundation
+import AppKit
 
 // Browser support. The Tracky extension (extension/) reports each finished AI reply through Chrome
 // native messaging. Chrome starts this binary as the host; it validates the event and appends one
 // line to browser.jsonl, which the app reads like any other log.
 
 let browserLog = NSString(string: "~/Library/Application Support/Tracky/browser.jsonl").expandingTildeInPath
+
+/// Chrome's side of the link: the native messaging manifest that lets the extension reach Tracky,
+/// and the check-in file the host touches whenever the extension talks to it.
+enum ChromeLink {
+    static let extensionID = "dcbfgnpofnkeooopckmnjbcdepjgphhh"   // pinned by the key in extension/manifest.json
+    static let manifest = NSString(string: "~/Library/Application Support/Google/Chrome/NativeMessagingHosts/local.tracky.json").expandingTildeInPath
+    static let checkIn = NSString(string: "~/Library/Application Support/Tracky/browser-ping").expandingTildeInPath
+    static let chrome = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.google.Chrome")
+
+    static var connected: Bool { FileManager.default.fileExists(atPath: manifest) }
+    /// The extension checks in each time Chrome starts it; a day of silence means it is gone or Chrome is unused.
+    static var extensionSeen: Bool {
+        guard let d = (try? FileManager.default.attributesOfItem(atPath: checkIn))?[.modificationDate] as? Date else { return false }
+        return Date().timeIntervalSince(d) < 24 * 3600
+    }
+    static var on: Bool { connected && extensionSeen }
+
+    static func connect() {
+        guard let bin = Bundle.main.executablePath else { return }
+        let json: [String: Any] = ["name": "local.tracky", "description": "Tracky: counts the water behind AI replies",
+                                   "path": bin, "type": "stdio", "allowed_origins": ["chrome-extension://\(extensionID)/"]]
+        try? FileManager.default.createDirectory(atPath: (manifest as NSString).deletingLastPathComponent, withIntermediateDirectories: true)
+        try? JSONSerialization.data(withJSONObject: json, options: .prettyPrinted).write(to: URL(fileURLWithPath: manifest))
+    }
+    static func disconnect() { try? FileManager.default.removeItem(atPath: manifest) }
+
+    /// Opens Chrome's extensions page and shows the bundled extension folder to load from.
+    static func showExtension() {
+        if let folder = Bundle.main.url(forResource: "extension", withExtension: nil) {
+            NSWorkspace.shared.activateFileViewerSelecting([folder])
+        }
+        if let chrome, let page = URL(string: "chrome://extensions") {
+            NSWorkspace.shared.open([page], withApplicationAt: chrome, configuration: NSWorkspace.OpenConfiguration())
+        }
+    }
+}
 
 /// Google's measured water for a median Gemini Apps text prompt (Elsworth et al. 2025,
 /// "Measuring the environmental impact of delivering AI at Google scale"), used for every
@@ -69,13 +105,17 @@ func runNativeHost() -> Never {
     let input = FileHandle.standardInput
     guard let head = try? input.read(upToCount: 4), head.count == 4 else { exit(0) }
     let len = Int(head.withUnsafeBytes { $0.loadUnaligned(as: UInt32.self) })   // native byte order, per the protocol
-    guard len < 64_000, let body = try? input.read(upToCount: len), body.count == len, let e = BrowserEvent(json: body)
-    else { reply(false); exit(0) }
+    guard len < 64_000, let body = try? input.read(upToCount: len), body.count == len else { reply(false); exit(0) }
+
+    // Any message from the extension is a check-in; {"ping": true} is only that.
+    let fm = FileManager.default
+    try? fm.createDirectory(atPath: (browserLog as NSString).deletingLastPathComponent, withIntermediateDirectories: true)
+    if !fm.createFile(atPath: ChromeLink.checkIn, contents: nil) { reply(false); exit(0) }
+    if (try? JSONSerialization.jsonObject(with: body) as? [String: Any])?["ping"] as? Bool == true { reply(true); exit(0) }
+    guard let e = BrowserEvent(json: body) else { reply(false); exit(0) }
 
     var line: [String: Any] = ["ts": ISO8601DateFormatter().string(from: Date()), "site": e.site, "tokens": e.tokens]
     line["model"] = e.model
-    let fm = FileManager.default
-    try? fm.createDirectory(atPath: (browserLog as NSString).deletingLastPathComponent, withIntermediateDirectories: true)
     if !fm.fileExists(atPath: browserLog) { fm.createFile(atPath: browserLog, contents: nil) }
     guard let data = try? JSONSerialization.data(withJSONObject: line), let h = FileHandle(forWritingAtPath: browserLog)
     else { reply(false); exit(0) }

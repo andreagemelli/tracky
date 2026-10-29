@@ -1,6 +1,6 @@
 # Tracky
 
-A small pixel water drop that lives on your Mac and shows how much water your AI use costs, while you use it: coding agents, AI chats in the browser, and Google's AI answers.
+A small pixel water drop that lives on your Mac and shows how much water your AI use costs, while you use it. It works locally out of the box, reading the logs AI tools already keep on your Mac. Browser tracking (AI chats and Google's AI answers) is an optional add-on.
 
 ![Tracky at each heat level, awake in light mode and asleep in dark mode, with sample usage in the legend](docs/preview.png)
 
@@ -18,6 +18,7 @@ A small pixel water drop that lives on your Mac and shows how much water your AI
 
 - **Where the water comes from:** a second bar splits the total by model and source, such as *Opus 5.5 · Code*, *GPT 5.2 · ChatGPT* or *Google AI Overview*, with a legend. The four largest get a color; the rest are grouped as *Other*.
 - **Tips in a speech bubble,** about what you used last: the next lighter model in the same family (*Try Sonnet 5.5: ~3× less water* after Opus), your coding agent's effort (*45% thinking: try lower effort*), or, after a Google search with an AI answer, *Use Google's Web tab: no AI answer*.
+- **Browser tracking, at a glance:** a globe in the card's corner with a red dot when it's off and a green one when it's on. Click it to set it up in two steps.
 - **Menu bar:** the drop and the total. Click it for the same breakdown, a tip, the period (last 1, 5 or 24 hours), switches for the minimal card, to hide the card and to open Tracky at login (on by default), and *How is this estimated?*, which opens the EcoLogits method Tracky implements.
 
 Everything stays on your Mac. Tracky records only which model ran, when, and how many tokens it produced. It never stores prompts or replies, needs no macOS permissions and makes no network calls.
@@ -60,19 +61,20 @@ build/Tracky.app/Contents/MacOS/Tracky --preview docs/preview.png
 
 `--dump` prints what Tracky read from the last 24 hours. `--preview` renders every heat level, awake and asleep, to a PNG, adding a few sample browser events so the legend fills up.
 
-### Browser extension (Chrome)
+### Browser tracking (optional, Chrome)
 
-```bash
-./install-browser.sh
-```
+Click the globe on Tracky's card, or *Browser tracking* in the menu, and follow the two steps:
 
-Then, in Chrome, open `chrome://extensions`, turn on **Developer mode**, click **Load unpacked**, and pick the `extension` folder. The script registers Tracky as Chrome's [native messaging](https://developer.chrome.com/docs/extensions/develop/concepts/native-messaging) host; `./install-browser.sh --uninstall` removes it.
+1. **Connect Chrome:** registers Tracky as Chrome's [native messaging](https://developer.chrome.com/docs/extensions/develop/concepts/native-messaging) host, so the extension can reach it.
+2. **Add the extension:** opens Chrome's extensions page and the extension folder bundled in Tracky. Turn on **Developer mode**, click **Load unpacked**, and pick that folder.
+
+The dot turns green once the extension checks in. *Turn off* in the same box removes the link.
 
 ## How it sees your AI use
 
-**Coding agents.** Tracky reads Claude Code's own logs (`~/.claude/projects/*/*.jsonl`): for each reply, the model, output and thinking tokens, and effort. These counts are exact.
+**Local tools.** Tracky reads Claude Code's own logs (`~/.claude/projects/*/*.jsonl`): for each reply, the model, output and thinking tokens, and effort. These counts are exact.
 
-**The browser.** When an AI reply finishes, the extension sends Tracky the site, the model and an approximate token count, never the text. Tracky stores each event as one line in `~/Library/Application Support/Tracky/browser.jsonl`. There are two ways it notices replies:
+**The browser (optional).** When an AI reply finishes, the extension sends Tracky the site, the model and an approximate token count, never the text. Tracky stores each event as one line in `~/Library/Application Support/Tracky/browser.jsonl`. There are two ways it notices replies:
 
 - **Dedicated watchers** for claude.ai, ChatGPT, Gemini and Google search. They read each site's page structure, which also gives the model name. Sites can change that structure without notice.
 - **A general meter** for the other listed sites. It notices that the page is streaming a reply (a request whose answer arrives in pieces), then measures how much visible text the page gained. It never reads what is sent or streamed, only the model name when the request carries one. Adding a site is one line in `extension/manifest.json`.

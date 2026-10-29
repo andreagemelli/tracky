@@ -13,6 +13,10 @@ let catalog = Catalog(url: Bundle.main.url(forResource: "models", withExtension:
 
 final class Store: ObservableObject {
     @Published var usages: [Usage] = []
+    @Published var browserOn = ChromeLink.on
+    @Published var chromeConnected = ChromeLink.connected
+    @Published var showSetup = false
+    func refreshLink() { browserOn = ChromeLink.on; chromeConnected = ChromeLink.connected }
     @Published var compact = UserDefaults.standard.bool(forKey: "compact") {
         didSet { UserDefaults.standard.set(compact, forKey: "compact") }
     }
@@ -38,7 +42,7 @@ final class Store: ObservableObject {
     private func refresh() {
         queue.async { [self] in
             let all = load()
-            DispatchQueue.main.async { self.usages = all }
+            DispatchQueue.main.async { self.usages = all; self.refreshLink() }
         }
     }
 
@@ -269,7 +273,9 @@ struct Companion: View {
     @ObservedObject var store: Store
     var forced: (asleep: Bool, heat: Int)? = nil   // for --preview
     var forcedCompact: Bool? = nil
+    var window: () -> NSWindow? = { nil }
     @State private var tick = 0
+    @State private var dragStart: (mouse: NSPoint, origin: NSPoint)?
     @Environment(\.colorScheme) var scheme
     private let timer = Timer.publish(every: 0.25, on: .main, in: .common).autoconnect()
 
@@ -280,6 +286,7 @@ struct Companion: View {
         let tip = secs % 24 < 8 ? tipList[(secs / 24) % tipList.count] : nil   // speaks for 8 s every 24 s
         VStack(alignment: .leading, spacing: 10) {
             Scene(asleep: forced?.asleep ?? !store.active, heat: c.3, tick: tick, tip: compact ? nil : tip, height: compact ? 64 : 100)
+            if store.showSetup && !compact { BrowserSetup(store: store) }
             if compact {   // minimal: just Tracky and the total
                 Text("≈ " + fmt(total)).font(.system(size: 15, weight: .bold)).monospacedDigit()
                     .frame(maxWidth: .infinity)
@@ -333,25 +340,91 @@ struct Companion: View {
         .frame(width: compact ? 150 : 250)
         .background(RoundedRectangle(cornerRadius: 18).fill(p.card))
         .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(Color.primary.opacity(0.08)))
+        // Drag from anywhere that isn't a button; double-click switches minimal and complete.
+        .contentShape(RoundedRectangle(cornerRadius: 18))
+        .onTapGesture(count: 2) { store.compact.toggle() }
+        .gesture(DragGesture(minimumDistance: 1)
+            .onChanged { _ in
+                guard let w = window() else { return }
+                let m = NSEvent.mouseLocation, s = dragStart ?? (m, w.frame.origin)
+                dragStart = s
+                w.setFrameOrigin(NSPoint(x: s.origin.x + m.x - s.mouse.x, y: s.origin.y + m.y - s.mouse.y))
+            }
+            .onEnded { _ in dragStart = nil })
+        .overlay(alignment: .topTrailing) {   // browser tracking status: red off, green on
+            Button { store.compact = false; store.showSetup.toggle() } label: {
+                Image(systemName: "globe").font(.system(size: 12)).foregroundStyle(.secondary)
+                    .overlay(alignment: .bottomTrailing) {
+                        Circle().fill(store.browserOn ? Color.green : Color.red).frame(width: 6, height: 6).offset(x: 2, y: 2)
+                    }
+                    .padding(10).contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help(store.browserOn ? "Browser tracking is on" : "Browser tracking is off · click to set up")
+        }
         .onReceive(timer) { _ in if forced == nil { tick += 1 } }
+    }
+}
+
+/// Two steps to count AI in Chrome, shown inside the card from the globe or the menu.
+struct BrowserSetup: View {
+    @ObservedObject var store: Store
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 6) {
+                Text("Browser tracking").font(.system(size: 12, weight: .semibold))
+                Text(store.browserOn ? "on" : "off").font(.system(size: 11)).foregroundStyle(store.browserOn ? .green : .red)
+                Spacer()
+                Button { store.showSetup = false } label: { Image(systemName: "xmark").font(.system(size: 10, weight: .bold)) }
+                    .buttonStyle(.plain).foregroundStyle(.secondary)
+            }
+            if store.browserOn {
+                HStack {
+                    Text("Counting AI replies in Chrome").font(.system(size: 11)).foregroundStyle(.secondary)
+                    Spacer()
+                    Button("Turn off") { ChromeLink.disconnect(); store.refreshLink() }
+                }
+            } else if ChromeLink.chrome == nil {
+                Text("Needs Google Chrome").font(.system(size: 11)).foregroundStyle(.secondary)
+            } else {
+                step(1, "Connect Chrome", done: store.chromeConnected) {
+                    Button(store.chromeConnected ? "Done" : "Connect") { ChromeLink.connect(); store.refreshLink() }.disabled(store.chromeConnected)
+                }
+                step(2, "Add the extension", note: "Developer mode → Load unpacked", done: false) {
+                    Button("Open") { ChromeLink.showExtension() }.disabled(!store.chromeConnected)
+                }
+            }
+        }
+        .controlSize(.small)
+        .padding(10)
+        .background(RoundedRectangle(cornerRadius: 10).fill(Color.primary.opacity(0.05)))
+    }
+
+    private func step(_ n: Int, _ title: String, note: String? = nil, done: Bool, @ViewBuilder action: () -> some View) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: done ? "checkmark.circle.fill" : "\(n).circle").foregroundStyle(done ? Color.green : Color.secondary)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(title).font(.system(size: 12))
+                if let note { Text(note).font(.system(size: 10)).foregroundStyle(.secondary) }
+            }
+            Spacer()
+            action()
+        }
     }
 }
 
 // MARK: - App
 
-/// Borderless panel dragged from anywhere (SwiftUI content would otherwise swallow the click).
-final class DragPanel: NSPanel {
-    var onDoubleClick: () -> Void = {}
-    override func sendEvent(_ event: NSEvent) {
-        guard event.type == .leftMouseDown else { super.sendEvent(event); return }
-        if event.clickCount == 2 { onDoubleClick() } else { performDrag(with: event) }
-    }
+/// Takes the first click even though Tracky never becomes the active app, so the card's buttons work.
+final class FirstClickHost<V: View>: NSHostingView<V> {
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 }
 
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     let store = Store()
     var statusItem: NSStatusItem!
-    var panel: DragPanel!
+    var panel: NSPanel!
     var bag: Set<AnyCancellable> = []
 
     func applicationDidFinishLaunching(_: Notification) {
@@ -362,11 +435,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             UserDefaults.standard.set(true, forKey: "loginSet")
         }
 
-        let host = NSHostingView(rootView: Companion(store: store))
-        panel = DragPanel(contentRect: NSRect(origin: .zero, size: host.fittingSize),
+        let host = FirstClickHost(rootView: Companion(store: store, window: { [weak self] in self?.panel }))
+        panel = NSPanel(contentRect: NSRect(origin: .zero, size: host.fittingSize),
                           styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
         panel.contentView = host
-        panel.onDoubleClick = { [weak self] in self?.store.compact.toggle() }
         panel.isOpaque = false
         panel.backgroundColor = .clear
         panel.hasShadow = true
@@ -403,6 +475,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if store.bySource.isEmpty { menu.addItem(row("No AI activity yet", "")) }
         menu.addItem(.separator())
         menu.addItem(row("💡 " + tips(store)[0], ""))
+        menu.addItem(.separator())
+
+        let browser = NSMenuItem(title: store.browserOn ? "Browser tracking: on" : "Browser tracking: off · Set up…",
+                                 action: #selector(openBrowserSetup), keyEquivalent: "")
+        browser.target = self
+        browser.image = NSImage(systemSymbolName: "globe", accessibilityDescription: nil)
+        menu.addItem(browser)
         menu.addItem(.separator())
 
         let period = NSMenuItem(title: "Period", action: nil, keyEquivalent: "")
@@ -447,6 +526,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         try? s.status == .enabled ? s.unregister() : s.register()
     }
     @objc func toggleCompact() { store.compact.toggle() }
+    @objc func openBrowserSetup() {
+        store.compact = false
+        store.showSetup = true
+        panel.orderFront(nil)
+        UserDefaults.standard.set(true, forKey: "showCompanion")
+    }
     @objc func toggleCompanion() {
         panel.isVisible ? panel.orderOut(nil) : panel.orderFront(nil)
         UserDefaults.standard.set(panel.isVisible, forKey: "showCompanion")
@@ -484,6 +569,7 @@ if let i = args.firstIndex(of: "--preview"), i + 1 < args.count {   // render ev
     // Real usage plus a few sample browser events, so the legend shows every kind of source.
     let samples = [#"{"site":"claude.ai","model":"claude-sonnet-5-5","tokens":4000}"#, #"{"site":"chatgpt.com","model":"gpt-5-2","tokens":3000}"#]
         + Array(repeating: #"{"site":"google-ai-overview"}"#, count: 40)
+    store.showSetup = args.contains("--setup")
     store.usages = store.load() + samples.compactMap { BrowserEvent(json: Data($0.utf8))?.usage(at: Date(), catalog: catalog) }
     let sheet = VStack(spacing: 16) {
         ForEach([ColorScheme.light, .dark], id: \.self) { scheme in

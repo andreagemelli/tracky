@@ -8,6 +8,7 @@ mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 # Pin the target: swiftc otherwise defaults to the newest macOS its SDK knows, which may be newer than this Mac.
 swiftc -O -target "$(uname -m)-apple-macos14.0" -o "$APP/Contents/MacOS/Tracky" Sources/*.swift -framework Cocoa -framework SwiftUI -framework ServiceManagement
 cp Resources/models.json "$APP/Contents/Resources/"
+cp -R extension "$APP/Contents/Resources/"   # Chrome loads it from here, via the card's setup
 cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
