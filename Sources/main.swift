@@ -98,19 +98,49 @@ func lighter(than m: Model) -> Model? {
     return alt
 }
 
-/// Tips about what was used last: a lighter model, lower effort, skipping Google's AI answers.
-/// Kept under ~32 characters so they fit Tracky's speech bubble on one line.
+/// A local model's footprint per 1,000 output tokens, in `metric`: as this Mac measured it, else
+/// 30 tokens/s at `localWatts` on the region's grid.
+func localPer1k(_ s: Store, _ metric: Metric) -> Double {
+    let local = s.usages.filter { $0.model.provider == "local" }, n = local.reduce(0) { $0 + $1.output }
+    if n > 0 { return metric.of(local.reduce(Impact()) { $0 + $1.impact }).mid / Double(n) * 1000 }
+    // ponytail: 30 tokens/s is a typical 8B model on Apple silicon; bigger local models run slower and draw more.
+    return metric.of(.fromEnergy(kWh: 1000 / 30 * localWatts / 3_600_000, kgCO2PerKWh: localGrid.kgCO2PerKWh,
+                                 litersPerKWh: localGrid.litersPerKWh)).mid
+}
+
+/// Tips from recent activity, most relevant first: whether AI was needed at all, then a smaller or a
+/// local model (always one of them), then lower effort. Kept under ~32 characters for the speech bubble.
 func tips(_ s: Store, _ metric: Metric) -> [String] {
     var out: [String] = []
+    let hour = s.usages.filter { $0.date > Date().addingTimeInterval(-3600) }
+    let chats = hour.filter { $0.source != "Code" && $0.model.provider != "local" }
     if let last = s.usages.max(by: { $0.date < $1.date }) {
+        // Was AI needed? Google's AI answers, many asks in an hour, or mostly short replies (quick facts).
         if last.source == "Search" {
-            out += ["Try Google's Web tab: no AI", "AI Mode follow-ups cost \(metric.noun)"]
+            out += ["A plain search would do?", "Try Google's Web tab: no AI"]
+        } else if chats.count >= 15 {
+            out += ["\(chats.count) asks this hour. All needed?", "Really need AI for this?"]
+        } else if chats.count >= 3, chats.map(\.output).sorted()[chats.count / 2] < 150 {
+            out += ["Quick facts? A search will do", "Really need AI for this?"]
         }
-        if let alt = lighter(than: last.model) {
+        if hour.filter({ $0.source == "Code" }).count >= 200 { out.append("Long agent run? Scope it tighter") }
+
+        // Smaller or local: always suggest one.
+        if last.model.provider == "local" {
+            out.append("Local model: the lightest way 👍")
+        } else {
             let one = { (m: Model) in metric.of(EcoLogits.impact(m, outputTokens: 1000)).mid }
-            let ratio = one(last.model) / one(alt)
-            if ratio >= 1.5 { out.append("Try \(pretty(alt.name)): ~\(Int(ratio.rounded()))× less \(metric.noun)") }
+            if let alt = lighter(than: last.model), case let r = one(last.model) / one(alt), r >= 1.5 {
+                out.append("Try \(pretty(alt.name)): ~\(Int(r.rounded()))× less \(metric.noun)")
+            }
+            let local = localPer1k(s, metric) * Double(last.output) / 1000
+            if local > 0, case let r = metric.of(last.impact).mid / local, r >= 1.5 {
+                out.append("Local model: ~\(Int(r.rounded()))× less \(metric.noun)")
+            } else if lighter(than: last.model) == nil {
+                out.append("A smaller model may do")
+            }
         }
+
         if let effort = last.effort, ["max", "xhigh", "high"].contains(effort) {
             let code = s.recent.filter { $0.source == "Code" }
             let output = code.reduce(0) { $0 + $1.output }, thinking = code.reduce(0) { $0 + $1.thinking }
@@ -127,6 +157,21 @@ func tipsSelfTest() {
     precondition(step("claude-opus-5-5") == "claude-sonnet-5-5" && step("claude-sonnet-4-5-20250929") == "claude-haiku-5-5")
     precondition(step("claude-haiku-5-5") == nil, "Haiku is the lightest Claude")
     precondition(step("gpt-5.2") == "gpt-5-mini" && step("gpt-5-mini") == "gpt-5-nano")
+
+    let s = Store(), sonnet = catalog["claude-sonnet-5-5"]!, haiku = catalog["claude-haiku-5-5"]!
+    func chat(_ m: Model, _ tokens: Int) -> Usage {
+        Usage(date: Date(), source: "claude.ai", model: m, output: tokens, thinking: 0, effort: nil, impact: EcoLogits.impact(m, outputTokens: tokens))
+    }
+    s.usages = Array(repeating: chat(sonnet, 800), count: 15)
+    let busy = tips(s, .water)
+    precondition(busy[0] == "15 asks this hour. All needed?" && busy.contains { $0.hasPrefix("Try Haiku 5.5") }
+                 && busy.contains { $0.hasPrefix("Local model: ~") }, "got \(busy)")
+    s.usages = Array(repeating: chat(haiku, 60), count: 4)   // short replies from the lightest Claude
+    let quick = tips(s, .energy)
+    // Batched data-center GPUs beat a laptop on energy for a model as small as Haiku: no local tip, a smaller one instead.
+    precondition(quick[0] == "Quick facts? A search will do" && quick.contains("A smaller model may do"), "got \(quick)")
+    s.usages = [chat(sonnet, 800)]
+    precondition(!tips(s, .co2).contains { $0.contains("search") || $0.contains("need") }, "one ask is no reason to nag")
     print("tips selftest ok")
 }
 

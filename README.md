@@ -42,7 +42,7 @@ The dot turns green once the extension checks in. It then counts AI replies on c
 - **Pick a metric.** The button under the 🔥 flame switches water → energy → CO₂, and so does *Track* in the menu. Tracky becomes a drop, a spark or a little fire; the other two metrics show under the total.
 - **Watch it heat up.** A bar fills toward the next everyday amount, such as a cup, a phone charge or 1 km by car. Each one you pass makes Tracky hotter, until it's red.
 - **See where it comes from.** The legend splits the total by model and source, such as *Opus 5.5 · Code* or *GPT 5.2 · ChatGPT*, in at most five lines.
-- **Get tips** in a speech bubble, about what you used last: a lighter model, lower effort, or skipping Google's AI answers.
+- **Get nudges** in a speech bubble, based on what you've been doing: *do you really need AI for this?* after a burst of asks or a string of quick questions, a plain search instead of Google's AI answers, and always a smaller or local model when it's actually lighter.
 - **🔥 Roast me.** Tracky gets angry and lists what the same amount could have been: espressos, phone charges, meters by car… Close it with ✕.
 
   <img src="docs/roast.png" alt="The roast" width="240">
@@ -69,15 +69,17 @@ Tracky may work with more than this, but only what's marked *tested* has been ch
 
 ### How it's estimated
 
-- **Cloud models:** [EcoLogits](https://ecologits.ai/latest/methodology/llm_inference/) v0.11.3. Energy comes from output tokens and the model's active parameters, scaled by the data center's PUE. CO₂ is that energy × the data-center grid's carbon intensity. Water follows [Li et al. 2025](https://arxiv.org/abs/2304.03271): cooling water plus the water used to make the electricity. Closed models don't publish their sizes, so EcoLogits estimates a range; Tracky shows its midpoint, marked `≈`.
+- **Cloud models:** [EcoLogits](https://ecologits.ai/latest/methodology/llm_inference/) v0.11.3. Energy comes from output tokens and the model's active parameters, scaled by the data center's PUE. CO₂ is that energy × the data-center grid's carbon intensity, plus the request's share of manufacturing the servers and GPUs (EcoLogits' embodied impact, over a 3-year life). Water follows [Li et al. 2025](https://arxiv.org/abs/2304.03271): cooling water plus the water used to make the electricity. Closed models don't publish their sizes, so EcoLogits estimates a range; Tracky shows its midpoint, marked `≈`.
 - **Google** (Gemini, AI Overviews): Google's [own measurement](https://services.google.com/fh/files/misc/measuring_the_environmental_impact_of_delivering_ai_at_google_scale.pdf) of a median prompt: 0.24 Wh, 0.03 g CO₂e, 0.26 mL.
 - **Models EcoLogits doesn't know** (Qwen, DeepSeek…): the same formula with a wide assumed size range. Treat these as an order of magnitude.
 - **Local models:** generation time × the Mac's extra power while generating, on your region's grid. The 19.2 W figure was measured on a MacBook Pro M4 (23.2 W generating, 4.0 W idle) and is used for every Mac for now.
 - **Browser replies:** about 4 characters per token, counted only once a reply has been seen streaming in.
 
-For scale, 1,000 output tokens from Opus 5.5 are about 3.1–5.9 Wh, 1.2–2.3 g CO₂e and 10–24 mL of water; from Haiku 5.5, about 40× less.
+For scale, 1,000 output tokens from Opus 5.5 are about 3.1–5.9 Wh, 1.3–2.3 g CO₂e and 10–24 mL of water; from Haiku 5.5, about 40× less.
 
-**Limits:** only output tokens count, so long agent sessions (mostly cached context) are underestimated. Training and hardware manufacturing aren't included.
+**Local vs cloud:** a laptop isn't always lighter. Per token, batched data-center GPUs can beat a Mac on energy for small models like Haiku, while a local model saves the data center's cooling water. Tracky suggests going local only when its numbers say so.
+
+**Limits:** only output tokens count, so long agent sessions (mostly cached context) are underestimated. Training isn't included, and neither is the Mac's own manufacturing for local models.
 
 ### Everyday amounts
 
