@@ -22,7 +22,7 @@ Estimates use the open [EcoLogits](https://ecologits.ai) method by GenAI Impact,
 ![Tracky's card on the desktop and its menu in the menu bar](docs/desktop.png)
 
 > [!NOTE]
-> **Work in progress.** Tracky is young, and some measurements may still be imprecise: closed models don't publish their sizes, browser token counts are estimated from reply length, and local power uses one Mac's measurement. Treat the numbers as informed estimates. Contributions are more than welcome: issues, fixes, new sources, better data. See [What's been tested](#whats-been-tested) for where things stand.
+> **Work in progress.** Tracky is young, and some measurements may still be imprecise: closed models don't publish their sizes, browser token counts are estimated from reply length, and local power uses one Mac's measurement. Treat the numbers as informed estimates. Contributions are more than welcome: issues, fixes, new sources, better data. See [What's been tested](#whats-been-tested) for where things stand. Check [Credits](#credits) section for methods and authors' attributions.
 
 ## Quickstart
 
@@ -79,7 +79,7 @@ Tracky may work with more than this, but only what's marked *tested* has been ch
 | Gemini, DeepSeek, Le Chat, Perplexity, Grok, Kimi, Copilot, HuggingChat, Poe (Chrome) | the extension | built, not confirmed |
 | Ollama, Claude desktop chat, Cowork, other desktop apps, Firefox, Safari | — | not yet |
 
-### How it's estimated, by [EcoLogits ❓](https://ecologits.ai/latest/methodology/)
+### How it's estimated
 
 - **Cloud models:** [EcoLogits](https://ecologits.ai/latest/methodology/llm_inference/) v0.11.3. Energy comes from output tokens and the model's active parameters, scaled by the data center's PUE. CO₂ is that energy × the data-center grid's carbon intensity, plus the request's share of manufacturing the servers and GPUs (EcoLogits' embodied impact, over a 3-year life). Water follows [Li et al. 2025](https://arxiv.org/abs/2304.03271): cooling water plus the water used to make the electricity. Closed models don't publish their sizes, so EcoLogits estimates a range; Tracky shows its midpoint, marked `≈`.
 - **Google** (Gemini, AI Overviews): Google's [own measurement](https://services.google.com/fh/files/misc/measuring_the_environmental_impact_of_delivering_ai_at_google_scale.pdf) of a median prompt: 0.24 Wh, 0.03 g CO₂e, 0.26 mL.
