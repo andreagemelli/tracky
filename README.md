@@ -111,3 +111,7 @@ build/Tracky.app/Contents/MacOS/Tracky --selftest
 - [EcoLogits](https://github.com/genai-impact/ecologits) by GenAI Impact: the method, and `Resources/models.json` (MPL-2.0).
 - [claude-mascot](https://github.com/No-one9/claude-mascot) (MIT): inspiration for the card, the pixel mascot and the no-Xcode build.
 - Related: [Drippy](https://github.com/trnprnc/Drippy), a menu-bar meter for the energy and water behind Claude Code.
+
+## License
+
+Free for personal, research and other noncommercial use, under the [PolyForm Noncommercial License 1.0.0](LICENSE): you can use, change and share Tracky, but not make money with it. Two files come from EcoLogits and stay under the [Mozilla Public License 2.0](LICENSE-MPL-2.0): `Sources/Water.swift` (the port of its method) and `Resources/models.json`. The grid factors in `Sources/Local.swift` are taken from EcoLogits' `electricity_mixes.json`.
