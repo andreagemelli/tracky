@@ -1,13 +1,28 @@
-# Tracky
+<p align="center">
+  <img src="docs/icon.png" width="88" alt="Tracky, a pixel water drop">
+</p>
+
+<h1 align="center">Tracky</h1>
+
+<p align="center">A pixel companion for your Mac that shows the water, energy and CO₂ behind your AI use.</p>
+
+<p align="center">
+  <a href="https://github.com/andreagemelli/tracky/actions/workflows/ci.yml"><img src="https://github.com/andreagemelli/tracky/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://github.com/andreagemelli/tracky/releases/latest"><img src="https://img.shields.io/github/v/release/andreagemelli/tracky" alt="Latest release"></a>
+  <img src="https://img.shields.io/badge/macOS-14%2B-lightgrey?logo=apple" alt="macOS 14+">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-PolyForm%20Noncommercial-blue" alt="License: PolyForm Noncommercial"></a>
+</p>
+
+## Introduction
+
+Tracky lives in your menu bar and on your desktop, and shows what your AI use costs while you use it: **water, energy and CO₂**. It reads the logs AI tools already keep on your Mac, turns each reply into an estimate, and heats up as the total grows. Along the way it nudges you toward lighter choices: a smaller or local model, lower effort, or no AI at all when a search would do. Nothing leaves your Mac.
+
+Estimates use the open [EcoLogits](https://ecologits.ai) method by GenAI Impact, ported to Swift and checked against the Python library.
+
+![Tracky's card on the desktop and its menu in the menu bar](docs/desktop.png)
 
 > [!NOTE]
 > **Work in progress.** Tracky is young, and some measurements may still be imprecise: closed models don't publish their sizes, browser token counts are estimated from reply length, and local power uses one Mac's measurement. Treat the numbers as informed estimates. Contributions are more than welcome: issues, fixes, new sources, better data. See [What's been tested](#whats-been-tested) for where things stand.
-
-A small pixel companion for your Mac that shows what your AI use costs while you use it: **water, energy and CO₂**. Tracky reads the logs AI tools already keep on your Mac, turns each reply into an estimate, and heats up as the total grows. Nothing leaves your Mac.
-
-![Tracky tracking water as a drop, energy as a spark and CO₂ as a little fire](docs/hero.png)
-
-Estimates use the open [EcoLogits](https://ecologits.ai) method by GenAI Impact, ported to Swift and checked against the Python library.
 
 ## Quickstart
 
@@ -40,6 +55,9 @@ The dot turns green once the extension checks in. It then counts AI replies on c
 ## What you can do
 
 - **Pick a metric.** The button under the 🔥 flame switches water → energy → CO₂, and so does *Track* in the menu. Tracky becomes a drop, a spark or a little fire; the other two metrics show under the total.
+
+  ![Tracky tracking water as a drop, energy as a spark and CO₂ as a little fire](docs/hero.png)
+
 - **Watch it heat up.** A bar fills toward the next everyday amount, such as a cup, a phone charge or 1 km by car. Each one you pass makes Tracky hotter, until it's red.
 - **See where it comes from.** The legend splits the total by model and source, such as *Opus 5.5 · Code* or *GPT 5.2 · ChatGPT*, in at most five lines.
 - **Get nudges** in a speech bubble, based on what you've been doing: *do you really need AI for this?* after a burst of asks or a string of quick questions, a plain search instead of Google's AI answers, and always a smaller or local model when it's actually lighter.
