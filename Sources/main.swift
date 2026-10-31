@@ -6,8 +6,7 @@ import SwiftUI
 // Chrome starts the native messaging host with the extension's origin as an argument.
 if CommandLine.arguments.contains(where: { $0.hasPrefix("chrome-extension://") }) { runNativeHost() }
 
-let catalog = Catalog(url: Bundle.main.url(forResource: "models", withExtension: "json")
-    ?? URL(fileURLWithPath: "Resources/models.json"))
+let catalog = Catalog()
 
 // MARK: - Store
 
@@ -92,9 +91,10 @@ func slices(_ s: Store, _ m: Metric) -> [(label: String, amount: Double, color: 
 
 /// The next lighter model of the same family, for "try a smaller model" tips. First match wins.
 func lighter(than m: Model) -> Model? {
+    // ecologits.js 3.0.0 doesn't list Haiku 5.5 yet: Haiku 4.5 until it does.
     let steps = [("claude-fable", "claude-opus-5-5"), ("claude-opus", "claude-sonnet-5-5"), ("claude-sonnet", "claude-haiku-5-5"),
-                 ("gpt-5-mini", "gpt-5-nano"), ("gpt-5", "gpt-5-mini")]
-    guard let alt = steps.first(where: { m.name.hasPrefix($0.0) }).flatMap({ catalog[$0.1] }), alt.name != m.name else { return nil }
+                 ("claude-sonnet", "claude-haiku-4-5"), ("gpt-5-mini", "gpt-5-nano"), ("gpt-5", "gpt-5-mini")]
+    guard let alt = steps.lazy.filter({ m.name.hasPrefix($0.0) }).compactMap({ catalog[$0.1] }).first, alt.name != m.name else { return nil }
     return alt
 }
 
@@ -154,17 +154,17 @@ func tips(_ s: Store, _ metric: Metric) -> [String] {
 
 func tipsSelfTest() {
     func step(_ from: String) -> String? { catalog[from].flatMap(lighter(than:))?.name }
-    precondition(step("claude-opus-5-5") == "claude-sonnet-5-5" && step("claude-sonnet-4-5-20250929") == "claude-haiku-5-5")
-    precondition(step("claude-haiku-5-5") == nil, "Haiku is the lightest Claude")
+    precondition(step("claude-opus-5-5") == "claude-sonnet-5-5" && step("claude-sonnet-4-5-20250929")?.hasPrefix("claude-haiku") == true)
+    precondition(step("claude-haiku-4-5") == nil, "Haiku is the lightest Claude")
     precondition(step("gpt-5.2") == "gpt-5-mini" && step("gpt-5-mini") == "gpt-5-nano")
 
-    let s = Store(), sonnet = catalog["claude-sonnet-5-5"]!, haiku = catalog["claude-haiku-5-5"]!
+    let s = Store(), sonnet = catalog["claude-sonnet-5-5"]!, haiku = (catalog["claude-haiku-5-5"] ?? catalog["claude-haiku-4-5"])!
     func chat(_ m: Model, _ tokens: Int) -> Usage {
         Usage(date: Date(), source: "claude.ai", model: m, output: tokens, thinking: 0, effort: nil, impact: EcoLogits.impact(m, outputTokens: tokens))
     }
     s.usages = Array(repeating: chat(sonnet, 800), count: 15)
     let busy = tips(s, .water)
-    precondition(busy[0] == "15 asks this hour. All needed?" && busy.contains { $0.hasPrefix("Try Haiku 5.5") }
+    precondition(busy[0] == "15 asks this hour. All needed?" && busy.contains { $0.hasPrefix("Try Haiku") }
                  && busy.contains { $0.hasPrefix("Local model: ~") }, "got \(busy)")
     s.usages = Array(repeating: chat(haiku, 60), count: 4)   // short replies from the lightest Claude
     let quick = tips(s, .energy)

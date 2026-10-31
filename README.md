@@ -17,7 +17,7 @@
 
 Tracky lives in your menu bar and on your desktop, and shows what your AI use costs while you use it: **water, energy and CO₂**. It reads the logs AI tools already keep on your Mac, turns each reply into an estimate, and heats up as the total grows. Along the way it nudges you toward lighter choices: a smaller or local model, lower effort, or no AI at all when a search would do. Nothing leaves your Mac.
 
-Estimates use the open [EcoLogits](https://ecologits.ai) method by GenAI Impact, ported to Swift and checked against the Python library.
+Estimates use the open [EcoLogits](https://ecologits.ai) method by GenAI Impact, computed by their own library, [ecologits.js](https://github.com/mlco2/ecologits.js), inside the app.
 
 ![Tracky's card on the desktop and its menu in the menu bar](docs/desktop.png)
 
@@ -28,7 +28,7 @@ Estimates use the open [EcoLogits](https://ecologits.ai) method by GenAI Impact,
 
 ### Install
 
-Needs macOS 14+ and the Xcode Command Line Tools.
+Needs macOS 14+ and the Xcode Command Line Tools. The first build downloads ecologits.js from npm (no Node needed).
 
 ```bash
 git clone https://github.com/andreagemelli/tracky && cd tracky && ./build.sh
@@ -81,13 +81,13 @@ Tracky may work with more than this, but only what's marked *tested* has been ch
 
 ### How it's estimated
 
-- **Cloud models:** [EcoLogits](https://ecologits.ai/latest/methodology/llm_inference/) v0.11.3. Energy comes from output tokens and the model's active parameters, scaled by the data center's PUE. CO₂ is that energy × the data-center grid's carbon intensity, plus the request's share of manufacturing the servers and GPUs (EcoLogits' embodied impact, over a 3-year life). Water follows [Li et al. 2025](https://arxiv.org/abs/2304.03271): cooling water plus the water used to make the electricity. Closed models don't publish their sizes, so EcoLogits estimates a range; Tracky shows its midpoint, marked `≈`.
+- **Cloud models:** [EcoLogits](https://ecologits.ai/latest/methodology/llm_inference/), through ecologits.js 3.0.0 (EcoLogits 0.11.2). Energy comes from output tokens and the model's active parameters, scaled by the data center's PUE. CO₂ is that energy × the data-center grid's carbon intensity, plus the request's share of manufacturing the servers and GPUs (EcoLogits' embodied impact, over a 3-year life). Water follows [Li et al. 2025](https://arxiv.org/abs/2304.03271): cooling water plus the water used to make the electricity. Closed models don't publish their sizes, so EcoLogits estimates a range; Tracky shows its midpoint, marked `≈`.
 - **Google** (Gemini, AI Overviews): Google's [own measurement](https://services.google.com/fh/files/misc/measuring_the_environmental_impact_of_delivering_ai_at_google_scale.pdf) of a median prompt: 0.24 Wh, 0.03 g CO₂e, 0.26 mL.
-- **Models EcoLogits doesn't know** (Qwen, DeepSeek…): the same formula with a wide assumed size range. Treat these as an order of magnitude.
+- **Models EcoLogits doesn't know** (Qwen, DeepSeek…): EcoLogits' formula with a wide assumed size range. Treat these as an order of magnitude.
 - **Local models:** generation time × the Mac's extra power while generating, on your region's grid. The 19.2 W figure was measured on a MacBook Pro M4 (23.2 W generating, 4.0 W idle) and is used for every Mac for now.
 - **Browser replies:** about 4 characters per token, counted only once a reply has been seen streaming in.
 
-For scale, 1,000 output tokens from Opus 5.5 are about 3.1–5.9 Wh, 1.3–2.3 g CO₂e and 10–24 mL of water; from Haiku 5.5, about 40× less.
+For scale, 1,000 output tokens from Opus 5.5 are about 3.2–6.0 Wh, 1.3–2.4 g CO₂e and 10–24 mL of water.
 
 **Local vs cloud:** a laptop isn't always lighter. Per token, batched data-center GPUs can beat a Mac on energy for small models like Haiku, while a local model saves the data center's cooling water. Tracky suggests going local only when its numbers say so.
 
@@ -120,11 +120,11 @@ build/Tracky.app/Contents/MacOS/Tracky --selftest
 
 ## Credits
 
-- [EcoLogits](https://github.com/mlco2/ecologits) by GenAI Impact: the code Tracky ports and `Resources/models.json` (MPL-2.0), and the [methodology](https://ecologits.ai/latest/methodology/) behind every cloud estimate (CC BY-SA 4.0). Tracky describes it in its own words. Please cite their paper: Samuel Rincé and Adrien Banse, [*EcoLogits: Evaluating the Environmental Impacts of Generative AI*](https://doi.org/10.21105/joss.07471), Journal of Open Source Software 10(111), 7471, 2025.
+- [EcoLogits](https://github.com/mlco2/ecologits) by GenAI Impact: [ecologits.js](https://github.com/mlco2/ecologits.js), which Tracky ships unmodified and runs for every cloud estimate (MPL-2.0), and the [methodology](https://ecologits.ai/latest/methodology/) behind every cloud estimate (CC BY-SA 4.0). Tracky describes it in its own words. Please cite their paper: Samuel Rincé and Adrien Banse, [*EcoLogits: Evaluating the Environmental Impacts of Generative AI*](https://doi.org/10.21105/joss.07471), Journal of Open Source Software 10(111), 7471, 2025.
 - Data behind EcoLogits' numbers, used through it: [Our World in Data](https://ourworldindata.org) (grid CO₂), [ADEME](https://base-empreinte.ademe.fr), [World Resources Institute](https://www.wri.org) (water used to make electricity), [ML.ENERGY](https://ml.energy/leaderboard), [OpenRouter](https://openrouter.ai), [Boavizta](https://boavizta.org) and providers' published PUE and WUE.
 - [claude-mascot](https://github.com/No-one9/claude-mascot) (MIT): inspiration for the card and the pixel mascot; `build.sh` is adapted from its build script and carries its MIT notice.
 - Related: [Drippy](https://github.com/trnprnc/Drippy), a menu-bar meter for the energy and water behind Claude Code.
 
 ## License
 
-Free for personal, research and other noncommercial use, under the [PolyForm Noncommercial License 1.0.0](LICENSE): you can use, change and share Tracky, but not make money with it. Two files come from EcoLogits and stay under the [Mozilla Public License 2.0](LICENSE-MPL-2.0): `Sources/Water.swift` (the port of its method) and `Resources/models.json`. The grid factors in `Sources/Local.swift` are taken from EcoLogits' `electricity_mixes.json`.
+Free for personal, research and other noncommercial use, under the [PolyForm Noncommercial License 1.0.0](LICENSE): you can use, change and share Tracky, but not make money with it. The app also ships EcoLogits' ecologits.js, unmodified, under the [Mozilla Public License 2.0](LICENSE-MPL-2.0); `build.sh` fetches it from npm, pinned by `package-lock.json`, and puts its license next to it.

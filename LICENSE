@@ -1,8 +1,8 @@
 Required Notice: Copyright 2026 Andrea Gemelli (https://github.com/andreagemelli/tracky)
 
-Tracky is licensed under the PolyForm Noncommercial License 1.0.0 below, except for
-Sources/Water.swift and Resources/models.json, which come from EcoLogits and stay under
-the Mozilla Public License 2.0 (see LICENSE-MPL-2.0).
+Tracky is licensed under the PolyForm Noncommercial License 1.0.0 below. The app also
+ships EcoLogits' ecologits.js, unmodified, which stays under the Mozilla Public License 2.0
+(see LICENSE-MPL-2.0).
 
 # PolyForm Noncommercial License 1.0.0
 
