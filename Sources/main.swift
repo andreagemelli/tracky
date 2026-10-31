@@ -718,6 +718,79 @@ if let i = args.firstIndex(of: "--shots"), i + 1 < args.count {   // render the 
     store.roasting = true
     shot("roast") { card(.water, 2) }
     store.roasting = false
+
+    // The README's top: Tracky's drop as an icon, and a made-up desktop with the card and the open menu.
+    func sprite(_ rows: [String], px: CGFloat, ink: Color? = nil) -> some View {
+        let p = Palette(scheme: .light)
+        return Canvas { ctx, _ in draw(rows, in: ctx, at: .zero, px: px, ink: ink ?? p.body, p) }
+            .frame(width: 12 * px, height: CGFloat(rows.count) * px)
+    }
+    func save(_ name: String, _ view: some View) {
+        let png = MainActor.assumeIsolated { () -> Data? in
+            let r = ImageRenderer(content: view)
+            r.scale = 2
+            return r.nsImage?.tiffRepresentation.flatMap { NSBitmapImageRep(data: $0)?.representation(using: .png, properties: [:]) }
+        }
+        try? png?.write(to: dir.appendingPathComponent(name + ".png"))
+    }
+    save("icon", sprite(Sprites.awake(.water), px: 8))
+
+    let m = Metric.water, font = Font.system(size: 13)
+    store.browserOn = true   // the globe and the menu both show browser tracking on
+    func menuRow(_ left: String, _ right: String = "", bold: Bool = false, check: Bool = false, sub: Bool = false, dim: Bool = false) -> some View {
+        HStack(spacing: 0) {
+            Text(check ? "✓" : "").frame(width: 18, alignment: .leading)
+            Text(left).fontWeight(bold ? .semibold : .regular).foregroundStyle(dim ? .secondary : .primary)
+            Spacer(minLength: 24)
+            Text(sub ? "›" : right).fontWeight(bold ? .semibold : .regular).monospacedDigit()
+        }.font(font).padding(.horizontal, 10).frame(height: 22)
+    }
+    func divider() -> some View { Divider().padding(.horizontal, 10).padding(.vertical, 4) }
+    let menu = VStack(alignment: .leading, spacing: 0) {
+        menuRow("\(m.name) · last \(Int(store.hours))h", "≈ " + m.fmt(m.of(store.impact).mid), bold: true)
+        menuRow(others(m, store.impact), dim: true)
+        divider()
+        ForEach(Array(slices(store, m).enumerated()), id: \.offset) { menuRow($1.label, m.fmt($1.amount)) }
+        divider()
+        menuRow("💡 " + tips(store, m)[0])
+        divider()
+        menuRow("🌐  Browser tracking: on")
+        divider()
+        menuRow("Track", sub: true); menuRow("Period", sub: true)
+        menuRow("Show on desktop", check: true); menuRow("Minimal card"); menuRow("Open at login", check: true)
+        menuRow("How is this estimated?"); menuRow("Quit Tracky", "⌘Q")
+    }
+    .padding(.vertical, 5).frame(width: 330)
+    .background(RoundedRectangle(cornerRadius: 10).fill(Color(white: 0.97, opacity: 0.94)))
+    .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.black.opacity(0.12), lineWidth: 0.5))
+    .shadow(color: .black.opacity(0.25), radius: 18, y: 8)
+
+    let menuBar = HStack(spacing: 18) {
+        Image(systemName: "apple.logo").font(.system(size: 15))
+        Text("Finder").fontWeight(.bold)
+        ForEach(["File", "Edit", "View", "Go", "Window", "Help"], id: \.self) { Text($0) }
+        Spacer()
+        HStack(spacing: 5) {
+            sprite(Sprites.awake(m).map { String($0.map { "#%b".contains($0) ? "#" : " " }) }, px: 1.4, ink: .black)
+            Text("≈ " + m.fmt(m.of(store.impact).mid)).monospacedDigit()
+        }
+        .padding(.horizontal, 7).frame(height: 22).background(RoundedRectangle(cornerRadius: 5).fill(Color.black.opacity(0.1)))
+        Image(systemName: "wifi"); Image(systemName: "battery.75percent")
+        Text("Fri 31 Oct  10:41")
+    }
+    .font(.system(size: 13)).padding(.horizontal, 16).frame(height: 30).background(Color.white.opacity(0.55))
+
+    let desktop = ZStack(alignment: .topLeading) {
+        LinearGradient(colors: [Color(red: 0.36, green: 0.62, blue: 0.93), Color(red: 0.55, green: 0.78, blue: 0.86),
+                                Color(red: 0.95, green: 0.78, blue: 0.62)], startPoint: .topLeading, endPoint: .bottomTrailing)
+        Circle().fill(Color.white.opacity(0.18)).frame(width: 520).blur(radius: 60).offset(x: -120, y: 260)
+        Circle().fill(Color(red: 0.2, green: 0.4, blue: 0.85).opacity(0.25)).frame(width: 600).blur(radius: 80).offset(x: 760, y: 220)
+        card(.water, 2).shadow(color: .black.opacity(0.25), radius: 20, y: 10).offset(x: 110, y: 110)
+        menu.offset(x: 1200 - 330 - 150, y: 34)
+        menuBar
+    }
+    .frame(width: 1200, height: 540).clipped().environment(\.colorScheme, .light)
+    save("desktop", desktop)
     exit(0)
 }
 
