@@ -121,7 +121,7 @@ build/Tracky.app/Contents/MacOS/Tracky --selftest
 ## Credits
 
 - [EcoLogits](https://github.com/genai-impact/ecologits) by GenAI Impact: the method, and `Resources/models.json` (MPL-2.0).
-- [claude-mascot](https://github.com/No-one9/claude-mascot) (MIT): inspiration for the card, the pixel mascot and the no-Xcode build.
+- [claude-mascot](https://github.com/No-one9/claude-mascot) (MIT): inspiration for the card and the pixel mascot; `build.sh` is adapted from its build script and carries its MIT notice.
 - Related: [Drippy](https://github.com/trnprnc/Drippy), a menu-bar meter for the energy and water behind Claude Code.
 
 ## License
