@@ -713,11 +713,16 @@ if let i = args.firstIndex(of: "--shots"), i + 1 < args.count {   // render the 
         try? png?.write(to: dir.appendingPathComponent(name + ".png"))
     }
     try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-    shot("hero") { card(.water, 1); card(.energy, 3); card(.co2, 5) }
-    shot("minimal", dark: true) { card(.water, 0, asleep: true, compact: true); card(.energy, 2, compact: true); card(.co2, 4, compact: true) }
-    store.roasting = true
-    shot("roast") { card(.water, 2) }
-    store.roasting = false
+    // One picture of the three modes: the full card (water), the roast (energy) and the minimal card (CO₂).
+    let roaster = Store()
+    roaster.usages = store.usages
+    roaster.roasting = true
+    store.browserOn = true; roaster.browserOn = true   // green globes: browser tracking on
+    shot("modes") {
+        card(.water, 2)
+        Companion(store: roaster, forced: (false, 3), forcedCompact: false, forcedMetric: .energy)
+        card(.co2, 4, compact: true)
+    }
 
     // The README's top: Tracky's drop as an icon, and a made-up desktop with the card and the open menu.
     func sprite(_ rows: [String], px: CGFloat, ink: Color? = nil) -> some View {
@@ -736,7 +741,6 @@ if let i = args.firstIndex(of: "--shots"), i + 1 < args.count {   // render the 
     save("icon", sprite(Sprites.awake(.water), px: 8))
 
     let m = Metric.water, font = Font.system(size: 13)
-    store.browserOn = true   // the globe and the menu both show browser tracking on
     func menuRow(_ left: String, _ right: String = "", bold: Bool = false, check: Bool = false, sub: Bool = false, dim: Bool = false) -> some View {
         HStack(spacing: 0) {
             Text(check ? "✓" : "").frame(width: 18, alignment: .leading)

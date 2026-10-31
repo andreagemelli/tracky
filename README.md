@@ -54,20 +54,14 @@ The dot turns green once the extension checks in. It then counts AI replies on c
 
 ## What you can do
 
+![The full card tracking water, the roast in energy mode, and the minimal card in CO₂ mode](docs/modes.png)
+
 - **Pick a metric.** The button under the 🔥 flame switches water → energy → CO₂, and so does *Track* in the menu. Tracky becomes a drop, a spark or a little fire; the other two metrics show under the total.
-
-  ![Tracky tracking water as a drop, energy as a spark and CO₂ as a little fire](docs/hero.png)
-
 - **Watch it heat up.** A bar fills toward the next everyday amount, such as a cup, a phone charge or 1 km by car. Each one you pass makes Tracky hotter, until it's red.
 - **See where it comes from.** The legend splits the total by model and source, such as *Opus 5.5 · Code* or *GPT 5.2 · ChatGPT*, in at most five lines.
 - **Get nudges** in a speech bubble, based on what you've been doing: *do you really need AI for this?* after a burst of asks or a string of quick questions, a plain search instead of Google's AI answers, and always a smaller or local model when it's actually lighter.
 - **🔥 Roast me.** Tracky gets angry and lists what the same amount could have been: espressos, phone charges, meters by car… Close it with ✕.
-
-  <img src="docs/roast.png" alt="The roast" width="240">
-
 - **Go minimal.** Double-click the card for just Tracky, the total and the model that used the most.
-
-  ![Minimal cards](docs/minimal.png)
 
 The menu bar has the same breakdown, plus the period (last 1, 5 or 24 hours) and switches to hide the card or stop opening at login.
 
