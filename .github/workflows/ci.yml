@@ -1,0 +1,22 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build and self-test
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Build Tracky.app and run --selftest
+        run: ./build.sh
+      - name: Check the extension
+        run: |
+          for f in extension/*.js; do node --check "$f"; done
+          python3 -c "import json; json.load(open('extension/manifest.json'))"
