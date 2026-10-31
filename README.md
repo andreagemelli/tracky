@@ -79,7 +79,7 @@ Tracky may work with more than this, but only what's marked *tested* has been ch
 | Gemini, DeepSeek, Le Chat, Perplexity, Grok, Kimi, Copilot, HuggingChat, Poe (Chrome) | the extension | built, not confirmed |
 | Ollama, Claude desktop chat, Cowork, other desktop apps, Firefox, Safari | — | not yet |
 
-### How it's estimated
+### How it's estimated, by [EcoLogits ❓](https://ecologits.ai/latest/methodology/)
 
 - **Cloud models:** [EcoLogits](https://ecologits.ai/latest/methodology/llm_inference/) v0.11.3. Energy comes from output tokens and the model's active parameters, scaled by the data center's PUE. CO₂ is that energy × the data-center grid's carbon intensity, plus the request's share of manufacturing the servers and GPUs (EcoLogits' embodied impact, over a 3-year life). Water follows [Li et al. 2025](https://arxiv.org/abs/2304.03271): cooling water plus the water used to make the electricity. Closed models don't publish their sizes, so EcoLogits estimates a range; Tracky shows its midpoint, marked `≈`.
 - **Google** (Gemini, AI Overviews): Google's [own measurement](https://services.google.com/fh/files/misc/measuring_the_environmental_impact_of_delivering_ai_at_google_scale.pdf) of a median prompt: 0.24 Wh, 0.03 g CO₂e, 0.26 mL.
@@ -120,7 +120,8 @@ build/Tracky.app/Contents/MacOS/Tracky --selftest
 
 ## Credits
 
-- [EcoLogits](https://github.com/genai-impact/ecologits) by GenAI Impact: the method, and `Resources/models.json` (MPL-2.0).
+- [EcoLogits](https://github.com/mlco2/ecologits) by GenAI Impact: the code Tracky ports and `Resources/models.json` (MPL-2.0), and the [methodology](https://ecologits.ai/latest/methodology/) behind every cloud estimate (CC BY-SA 4.0). Tracky describes it in its own words. Please cite their paper: Samuel Rincé and Adrien Banse, [*EcoLogits: Evaluating the Environmental Impacts of Generative AI*](https://doi.org/10.21105/joss.07471), Journal of Open Source Software 10(111), 7471, 2025.
+- Data behind EcoLogits' numbers, used through it: [Our World in Data](https://ourworldindata.org) (grid CO₂), [ADEME](https://base-empreinte.ademe.fr), [World Resources Institute](https://www.wri.org) (water used to make electricity), [ML.ENERGY](https://ml.energy/leaderboard), [OpenRouter](https://openrouter.ai), [Boavizta](https://boavizta.org) and providers' published PUE and WUE.
 - [claude-mascot](https://github.com/No-one9/claude-mascot) (MIT): inspiration for the card and the pixel mascot; `build.sh` is adapted from its build script and carries its MIT notice.
 - Related: [Drippy](https://github.com/trnprnc/Drippy), a menu-bar meter for the energy and water behind Claude Code.
 
