@@ -628,7 +628,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         login.target = self; login.state = SMAppService.mainApp.status == .enabled ? .on : .off
         menu.addItem(login)
         let how = NSMenuItem(title: "How is this estimated?", action: #selector(openMethodology), keyEquivalent: "")
-        how.target = self
+        how.target = self; how.image = NSImage(systemSymbolName: "questionmark.circle", accessibilityDescription: nil)
         menu.addItem(how)
         menu.addItem(NSMenuItem(title: "Quit Tracky", action: #selector(NSApp.terminate(_:)), keyEquivalent: "q"))
     }
@@ -646,8 +646,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc func setHours(_ sender: NSMenuItem) { store.hours = Double(sender.tag) }
     @objc func setMetric(_ sender: NSMenuItem) { store.metric = Metric.allCases[sender.tag] }
-    /// The EcoLogits method Tracky implements.
-    @objc func openMethodology() { NSWorkspace.shared.open(URL(string: "https://ecologits.ai/latest/methodology/llm_inference/")!) }
+    /// EcoLogits' methodology, behind every cloud estimate.
+    @objc func openMethodology() { NSWorkspace.shared.open(URL(string: "https://ecologits.ai/latest/methodology/")!) }
     @objc func toggleLogin() {
         let s = SMAppService.mainApp
         try? s.status == .enabled ? s.unregister() : s.register()
