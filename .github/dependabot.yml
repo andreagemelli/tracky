@@ -1,7 +1,12 @@
-# Keeps the pinned GitHub Actions above up to date.
+# Keeps the pinned GitHub Actions and ecologits.js up to date.
 version: 2
 updates:
   - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+  # ecologits.js, pinned in package-lock.json and fetched by build.sh.
+  - package-ecosystem: npm
     directory: /
     schedule:
       interval: weekly

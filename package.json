@@ -1,0 +1,7 @@
+{
+  "private": true,
+  "description": "Tracky's one dependency: EcoLogits' estimator, run by the app in JavaScriptCore. build.sh fetches it as package-lock.json pins it.",
+  "dependencies": {
+    "@ecologits/ecologits.js": "3.0.0"
+  }
+}

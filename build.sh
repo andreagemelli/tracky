@@ -30,8 +30,17 @@ APP=build/Tracky.app
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 # Pin the target: swiftc otherwise defaults to the newest macOS its SDK knows, which may be newer than this Mac.
-swiftc -O -target "$(uname -m)-apple-macos14.0" -o "$APP/Contents/MacOS/Tracky" Sources/*.swift -framework Cocoa -framework SwiftUI -framework ServiceManagement
-cp Resources/models.json "$APP/Contents/Resources/"
+swiftc -O -target "$(uname -m)-apple-macos14.0" -o "$APP/Contents/MacOS/Tracky" Sources/*.swift -framework Cocoa -framework SwiftUI -framework ServiceManagement -framework JavaScriptCore
+# EcoLogits' estimator (ecologits.js, MPL-2.0), unmodified, as package-lock.json pins it: fetched from npm and
+# checked against the lockfile's hash, so building needs no Node.
+LIB=build/ecologits.js.tgz
+read -r URL SRI < <(/usr/bin/python3 -c 'import json; p = json.load(open("package-lock.json"))["packages"]["node_modules/@ecologits/ecologits.js"]; print(p["resolved"], p["integrity"])')
+pinned() { [ -f "$LIB" ] && [ "sha512-$(openssl dgst -sha512 -binary "$LIB" | base64)" = "$SRI" ]; }
+pinned || curl -fsSL "$URL" -o "$LIB"
+pinned || { echo "ecologits.js does not match package-lock.json" >&2; exit 1; }
+tar -xzf "$LIB" -C build package/dist/index.cjs package/LICENSE
+cp build/package/dist/index.cjs "$APP/Contents/Resources/ecologits.js"
+cp build/package/LICENSE "$APP/Contents/Resources/ecologits.js-LICENSE"
 cp -R extension "$APP/Contents/Resources/"   # Chrome loads it from here, via the card's setup
 cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>

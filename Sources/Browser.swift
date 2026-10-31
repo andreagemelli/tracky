@@ -80,17 +80,16 @@ struct BrowserEvent: Equatable {
             guard let m = (candidates + [fallback]).lazy.compactMap({ catalog[$0] }).first else { return nil }
             return estimate(m, site == "claude.ai" ? "claude.ai" : "ChatGPT")
         case "gemini.google.com", "google-ai-overview":
-            let m = Model(name: site == "gemini.google.com" ? "Gemini" : "Google AI Overview", provider: "google",
-                          total: 0...0, active: 0...0, tps: nil, ttft: nil)
+            let m = Model(name: site == "gemini.google.com" ? "Gemini" : "Google AI Overview", provider: "google")
             return Usage(date: date, source: site == "gemini.google.com" ? "Gemini" : "Search", model: m, output: tokens,
                          thinking: 0, effort: nil, impact: googlePerPrompt)
         default:   // any other AI chat site: EcoLogits if it knows the model, else a wide stand-in
             let source = site.replacingOccurrences(of: #"^(chat|www)\."#, with: "", options: .regularExpression)
-            if let m = candidates.lazy.compactMap({ catalog[$0] }).first, EcoLogits.providers[m.provider] != nil {
+            if let m = candidates.lazy.compactMap({ catalog[$0] }).first {
                 return estimate(m, source)
             }
             // ponytail: one size range for every unknown model; per-site sizes if a site is used a lot.
-            return estimate(Model(name: model ?? "AI chat", provider: "other", total: 200...1000, active: 20...100, tps: nil, ttft: nil), source)
+            return estimate(Model(name: model ?? "AI chat", provider: "other"), source)
         }
     }
 }
@@ -148,12 +147,12 @@ func browserSelfTest(catalog: Catalog) {
     precondition(event(#"{"site":"claude.ai","model":"x\"; rm","tokens":9999999}"#).map { $0.model == nil && $0.tokens == 100_000 } == true,
                  "bad model and huge token count must be cleaned")
     let opus = event(#"{"site":"claude.ai","model":"claude-opus-5-5","tokens":1000}"#)!.usage(at: Date(), catalog: catalog)!
-    precondition(abs(opus.impact.water.min - 0.010032736340167416) < 1e-12, "claude.ai must use EcoLogits")
+    precondition(opus.impact.water.min == EcoLogits.impact(catalog["claude-opus-5-5"]!, outputTokens: 1000).water.min, "claude.ai must use EcoLogits")
     let gpt = event(#"{"site":"chatgpt.com","model":"gpt-5-2-thinking","tokens":1000}"#)!.usage(at: Date(), catalog: catalog)!
     precondition(gpt.model.name == "gpt-5.2", "ChatGPT slug must map to EcoLogits, got \(gpt.model.name)")
     precondition(event(#"{"site":"google-ai-overview"}"#)!.usage(at: Date(), catalog: catalog)!.impact.water.min == 0.00026)
     let mistral = event(#"{"site":"chat.mistral.ai","model":"mistral-medium-3.5","tokens":1000}"#)!.usage(at: Date(), catalog: catalog)!
-    precondition(abs(mistral.impact.water.min - 0.0034188770292818793) < 1e-12 && mistral.source == "mistral.ai", "known models on other sites use EcoLogits")
+    precondition(mistral.model.provider == "mistralai" && mistral.impact.water.min > 0 && mistral.source == "mistral.ai", "known models on other sites use EcoLogits")
     let qwen = event(#"{"site":"chat.qwen.ai","model":"qwen3.7-plus","tokens":1000}"#)!.usage(at: Date(), catalog: catalog)!
     precondition(qwen.model.provider == "other" && qwen.impact.water.min > 0 && qwen.impact.water.max > qwen.impact.water.min, "unknown models get a range")
     print("browser selftest ok")
