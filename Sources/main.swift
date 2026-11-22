@@ -27,7 +27,7 @@ final class Store: ObservableObject {
     @Published var hours: Double = UserDefaults.standard.object(forKey: "hours") as? Double ?? 5 {
         didSet { UserDefaults.standard.set(hours, forKey: "hours") }
     }
-    private let reader = ClaudeCodeReader(), browser = BrowserReader(), local = LocalReader(), llama = LlamaCpp()
+    private let reader = ClaudeCodeReader(), browser = BrowserReader(), desktop = DesktopReader(), local = LocalReader(), llama = LlamaCpp()
     private var kept: [Usage] = []   // owned by `queue` (or the caller in --dump/--preview)
     private let queue = DispatchQueue(label: "tracky.read", qos: .utility)
 
@@ -40,7 +40,7 @@ final class Store: ObservableObject {
     func load() -> [Usage] {
         let cutoff = Date().addingTimeInterval(-24 * 3600)
         kept = kept.filter { $0.date > cutoff } + reader.read(since: cutoff, catalog: catalog) + browser.read(since: cutoff, catalog: catalog)
-            + local.read(since: cutoff)
+            + desktop.read(since: cutoff, catalog: catalog) + local.read(since: cutoff)
         return kept
     }
 
@@ -683,9 +683,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 // MARK: - Entry
 
 let args = CommandLine.arguments
-if args.contains("--selftest") { selfTest(catalog: catalog); browserSelfTest(catalog: catalog); tipsSelfTest(); localSelfTest(); metricSelfTest(); exit(0) }
+if args.contains("--selftest") { selfTest(catalog: catalog); browserSelfTest(catalog: catalog); desktopSelfTest(); tipsSelfTest(); localSelfTest(); metricSelfTest(); exit(0) }
 if args.contains("--dump") {   // what Tracky sees in the last 24 h
-    for (name, us) in Dictionary(grouping: Store().load(), by: { $0.model.name }) {
+    for (name, us) in Dictionary(grouping: Store().load(), by: { "\($0.model.name) · \($0.source)" }) {
         let i = us.reduce(Impact()) { $0 + $1.impact }
         print(name, us.count, "requests", us.reduce(0) { $0 + $1.output }, "output tokens |",
               Metric.allCases.map { m in "\(m.name) \(m.fmt(m.of(i).min))–\(m.fmt(m.of(i).max))" }.joined(separator: " | "))
