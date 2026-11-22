@@ -41,6 +41,7 @@ open build/Tracky.app
 Tracky appears in the menu bar and as a card on your desktop, and opens at login from then on. Out of the box it tracks local tools:
 
 - **Claude Code**, in the terminal and in the Claude desktop app's Code tab.
+- **Claude desktop app chats**, read from the app's local storage. Token counts are estimated from reply length.
 - **llama.cpp**, when `llama-server` runs with `--metrics` on its default port.
 
 ### Browser tracking (optional, Chrome only)
@@ -74,10 +75,11 @@ Tracky may work with more than this, but only what's marked *tested* has been ch
 | Source | How Tracky sees it | Status |
 |---|---|---|
 | Claude Code | its local logs: exact model and token counts | tested |
+| Claude desktop app chat | its local storage: model, and tokens estimated from reply length | tested |
 | llama.cpp | its metrics: exact tokens and generation time | tested |
 | claude.ai, ChatGPT, Qwen, Z.ai, Google AI Overviews and AI Mode (Chrome) | the extension | tested |
 | Gemini, DeepSeek, Le Chat, Perplexity, Grok, Kimi, Copilot, HuggingChat, Poe (Chrome) | the extension | built, not confirmed |
-| Ollama, Claude desktop chat, Cowork, other desktop apps, Firefox, Safari | — | not yet |
+| Ollama, Cowork, other desktop apps, Firefox, Safari | — | not yet |
 
 ### How it's estimated
 

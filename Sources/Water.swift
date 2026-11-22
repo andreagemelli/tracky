@@ -121,7 +121,7 @@ struct Catalog {
 /// One model request seen in a local log. Holds no prompt or reply text.
 struct Usage {
     let date: Date
-    let source: String   // where it ran: "Code", "claude.ai", "ChatGPT", "Gemini", "Search"
+    let source: String   // where it ran: "Code", "Desktop", "claude.ai", "ChatGPT", "Gemini", "Search"
     let model: Model
     let output, thinking: Int
     let effort: String?
