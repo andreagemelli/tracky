@@ -21,7 +21,7 @@ jobs:
       - if: env.GITGUARDIAN_API_KEY == ''
         run: echo "::warning::GITGUARDIAN_API_KEY is not set, so the GitGuardian scan was skipped."
       - if: env.GITGUARDIAN_API_KEY != ''
-        uses: GitGuardian/ggshield-action@5cc1ed2be3e8bf625d354c7170731880670f74de # v1.56.1
+        uses: GitGuardian/ggshield-action@60b8b0ad58c307757756e0aa127e23170ef73c2f # v1.57.0
         env:
           GITHUB_PUSH_BEFORE_SHA: ${{ github.event.before }}
           GITHUB_PUSH_BASE_SHA: ${{ github.event.base }}
